@@ -18,6 +18,19 @@ typedef struct {
     size_t len;
     uint8_t* ptr;
 } slice_t;
+
+#define SLICE2BUF(buf, slice) \
+    do { \
+        assert(sizeof(buf) >= (slice).len + 1); \
+        memcpy((buf), (slice).ptr, (slice).len); \
+        (buf)[(slice).len] = 0; \
+    } while (0)
+
+#define BUF2SLICE(buf) \
+    ((slice_t) { \
+        .len = strlen((char*)(buf)), \
+        .ptr = (uint8_t*)(buf) \
+    })
 /*--------------------------------------------------------------------------*/
 
 typedef enum {
@@ -51,7 +64,7 @@ cbor_major_type_t get_major_type(const uint8_t* data);
 /*--------------------------------------------------------------------------*/
 typedef struct argument_t {
     enum argument_t_tag {
-        ARGUMENT_NONE,
+        ARGUMENT_NONE,  // Indefinite
         ARGUMENT_1BYTE,
         ARGUMENT_2BYTE,
         ARGUMENT_4BYTE,
@@ -139,5 +152,25 @@ uint8_t* process_array(cbor_array_t array, single_processor_function process_sin
  */
 uint8_t* process_map(cbor_map_t map, pair_processor_function process_pair, void* process_arg);
 /*--------------------------------------------------------------------------*/
+
+
+/********************************
+ * 
+ * ENCODING
+ * 
+ ********************************/
+
+typedef enum {
+    CBOR_ENCODER_NULL_PTR_ERROR,
+    CBOR_ENCODER_ERROR_BUFFER_OVERFLOW,
+    CBOR_ENCODER_TODO,
+    CBOR_ENCODER_UNKNOWN_SIZE
+} cbor_encode_error_t;
+
+DEFINE_RESULT_TYPE(slice_t, cbor_encode_error_t);
+FN_RESULT(slice_t, cbor_encode_error_t,
+encode, cbor_value_t value, slice_t target);
+
+encode_result_t encode_array(cbor_value_t *array, size_t array_len, slice_t target);
 
 #endif /*CBOR_H*/
