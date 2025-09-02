@@ -34,119 +34,78 @@ typedef struct {
 } identification_request_t;
 
 
-int main() {
+#define ARRAY_TO_SLICE(type, array) (type) { .len = sizeof(array) / sizeof(array[0]), .ptr = array }
+
+#define VALUES(array) (ARRAY_TO_SLICE(cbor_value_slice_t, array))
+
+#define PAIR(first, second) (cbor_pair_t) {.first = (cbor_value_t)(first), .second = (cbor_value_t)(second)}
+#define PAIRS(array) ARRAY_TO_SLICE(cbor_pair_slice_t, array)
+
+int main(void) {
     slice_t cbor = {
         .len = sizeof(buf),
         .ptr = &buf[0]
     };
 
-    cbor_value_t array[] = {
-        (cbor_value_t) {
-            .type = CBOR_TYPE_TEXT_STRING,
-            .value.bytes = BUF2SLICE("hello"),
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_BYTE_STRING,
-            .value.bytes = BUF2SLICE("world"),
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 42
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = -727
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_SIMPLE,
-            .value.simple = CBOR_SIMPLE_FALSE
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_SIMPLE,
-            .value.simple = CBOR_SIMPLE_UNDEFINED
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_FLOAT,
-            .value.floating = 3.14159265357989
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_TEXT_STRING,
-            .value.bytes = BUF2SLICE("A longer text string that exceeds 23 characters")
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_TEXT_STRING,
-            .value.bytes = BUF2SLICE("")
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_BYTE_STRING,
-            .value.bytes = (slice_t){
-                .ptr = (uint8_t*)"\0" "\n" "\u1234",
-                .len = 3
+    void* stack_before = __builtin_frame_address(0);
+    cbor_value_t array = {
+        .type = CBOR_TYPE_VALUES,
+        .value.values = VALUES((
+            (cbor_value_t[]){
+            {
+                .type = CBOR_TYPE_TEXT_STRING,
+                .value.bytes = BUF2SLICE("hello"),
+            },
+            {
+                .type = CBOR_TYPE_PAIRS,
+                .value.pairs = PAIRS((
+                (cbor_pair_t[]){
+                    {
+                        .first = {
+                            .type = CBOR_TYPE_TEXT_STRING,
+                            .value.bytes = BUF2SLICE("key1"),
+                        },
+                        .second = {
+                            .type = CBOR_TYPE_INTEGER,
+                            .value.integer = 42,
+                        },
+                    },
+                    {
+                        .first = {
+                            .type = CBOR_TYPE_TEXT_STRING,
+                            .value.bytes = BUF2SLICE("key2"),
+                        },
+                        .second = {
+                            .type = CBOR_TYPE_INTEGER,
+                            .value.integer = 84,
+                        },
+                    },
+                }
+                ))
+            },
+            {
+                .type = CBOR_TYPE_VALUES,
+                .value.values = VALUES((
+                    (cbor_value_t[]){
+                    {
+                        .type = CBOR_TYPE_TEXT_STRING,
+                        .value.bytes = BUF2SLICE("world"),
+                    },
+                                    {
+                        .type = CBOR_TYPE_INTEGER,
+                        .value.integer = 1234,
+                    },
+                    }
+                ))
+            },
             }
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 1
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 2
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 3
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 4
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 5
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 6
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 7
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 8
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 9
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 10
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 11
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 12
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 13
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 14
-        },
-        (cbor_value_t) {
-            .type = CBOR_TYPE_INTEGER,
-            .value.integer = 15
-        },
+        ))
     };
+    void* stack_after = __builtin_frame_address(0);
 
-    encode_result_t res = encode_array(array, sizeof(array) / sizeof(array[0]), cbor);
+    printf("Stack size: %zd bytes\n", (char*)stack_after - (char*)stack_before);
+
+    encode_result_t res = encode(array, cbor);
 
     if (res.is_error) {
         printf("Error: %d\n", res.err);

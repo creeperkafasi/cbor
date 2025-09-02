@@ -10,5 +10,9 @@ CFLAGS += -Wnull-dereference -Wdouble-promotion -Wformat=2
 CFLAGS += -fsanitize=undefined -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow
 CFLAGS += -fstack-protector-strong -fstack-clash-protection
 
+ifeq ($(CC), clang)
+CFLAGS += -Wno-c2y-extensions -Wno-c23-extensions
+endif
+
 main:
 	$(CC) $(CFILES) $(CFLAGS) $(INCLUDES) main.c

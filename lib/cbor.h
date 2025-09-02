@@ -53,6 +53,9 @@ typedef enum {
     CBOR_TYPE_TAG              = 6,
     CBOR_TYPE_SIMPLE           = 7,
     CBOR_TYPE_FLOAT            = 8,
+
+    CBOR_TYPE_VALUES, // For encoding
+    CBOR_TYPE_PAIRS,  // For encoding
 } cbor_type_t;
 
 
@@ -115,7 +118,20 @@ typedef enum {
     CBOR_SIMPLE_ERROR_UNASSIGNED
 } cbor_simple_t;
 
-typedef struct cbor_value_t {
+typedef struct cbor_value_s cbor_value_s;
+typedef struct {
+    size_t len;
+    cbor_value_s *ptr;
+} cbor_value_slice_t;
+
+typedef struct cbor_pair_s cbor_pair_t;
+
+typedef struct {
+    size_t len;
+    cbor_pair_t* ptr;
+} cbor_pair_slice_t;
+
+typedef struct cbor_value_s {
     cbor_type_t type;
     argument_t argument;
     union {
@@ -126,9 +142,16 @@ typedef struct cbor_value_t {
         cbor_array_t array;
         float floating;
         cbor_simple_t simple;
+        cbor_value_slice_t values;
+        cbor_pair_slice_t pairs;
     } value;
-    uint8_t* next;
+    uint8_t *next;
 } cbor_value_t;
+
+typedef struct cbor_pair_s {
+    cbor_value_s first;
+    cbor_value_s second;
+} cbor_pair_t;
 
 typedef enum {
     NULL_PTR_ERROR,
@@ -170,7 +193,5 @@ typedef enum {
 DEFINE_RESULT_TYPE(slice_t, cbor_encode_error_t);
 FN_RESULT(slice_t, cbor_encode_error_t,
 encode, cbor_value_t value, slice_t target);
-
-encode_result_t encode_array(cbor_value_t *array, size_t array_len, slice_t target);
 
 #endif /*CBOR_H*/
