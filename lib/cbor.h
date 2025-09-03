@@ -41,6 +41,10 @@ typedef enum {
 
     CBOR_ENCODE_TYPE_VALUES,
     CBOR_ENCODE_TYPE_PAIRS,
+    CBOR_ENCODE_TYPE_VALUES_INDEFINITE,
+    CBOR_ENCODE_TYPE_PAIRS_INDEFINITE,
+    CBOR_ENCODE_TYPE_BYTE_STRING_INDEFINITE,
+    CBOR_ENCODE_TYPE_TEXT_STRING_INDEFINITE,
     CBOR_ENCODE_TYPE_CUSTOM_ENCODER
 } cbor_type_t;
 
@@ -197,8 +201,40 @@ typedef struct cbor_pair_s {
 
 #define VALUES(array) (ARRAY_TO_SLICE(cbor_value_slice_t, array))
 
+#define VALUES_INDEFINITE(array) (ARRAY_TO_SLICE(cbor_value_slice_t, array))
+
 #define PAIR(first, second) (cbor_pair_t) {.first = (cbor_value_t)(first), .second = (cbor_value_t)(second)}
 #define PAIRS(array) ARRAY_TO_SLICE(cbor_pair_slice_t, array)
+
+#define PAIRS_INDEFINITE(array) ARRAY_TO_SLICE(cbor_pair_slice_t, array)
+
+/*--------------------------------------------------------------------------*/
+/* Indefinite Length Value Constructors */
+/*--------------------------------------------------------------------------*/
+
+#define CBOR_INDEFINITE_ARRAY(values_array) \
+    ((cbor_value_t) { \
+        .type = CBOR_ENCODE_TYPE_VALUES_INDEFINITE, \
+        .value.values = VALUES_INDEFINITE(values_array) \
+    })
+
+#define CBOR_INDEFINITE_MAP(pairs_array) \
+    ((cbor_value_t) { \
+        .type = CBOR_ENCODE_TYPE_PAIRS_INDEFINITE, \
+        .value.pairs = PAIRS_INDEFINITE(pairs_array) \
+    })
+
+#define CBOR_INDEFINITE_BYTE_STRING(chunks_array) \
+    ((cbor_value_t) { \
+        .type = CBOR_ENCODE_TYPE_BYTE_STRING_INDEFINITE, \
+        .value.values = VALUES_INDEFINITE(chunks_array) \
+    })
+
+#define CBOR_INDEFINITE_TEXT_STRING(chunks_array) \
+    ((cbor_value_t) { \
+        .type = CBOR_ENCODE_TYPE_TEXT_STRING_INDEFINITE, \
+        .value.values = VALUES_INDEFINITE(chunks_array) \
+    })
 
 /*--------------------------------------------------------------------------*/
 /* Function Declarations */
@@ -221,9 +257,14 @@ typedef void (*single_processor_function)(const cbor_value_t* value, void* proce
 
 uint8_t* cbor_process_array(cbor_array_t array, single_processor_function process_single, void* process_arg);
 uint8_t* cbor_process_map(cbor_map_t map, pair_processor_function process_pair, void* process_arg);
+uint8_t* cbor_process_indefinite_string(cbor_array_t string_chunks, cbor_type_t expected_type, single_processor_function process_single, void* process_arg);
 
 /* Encoding Functions */
 FN_RESULT(slice_t, cbor_encode_error_t,
 cbor_encode, cbor_value_t value, slice_t target);
+
+/* Indefinite Length Encoding Functions */
+cbor_encode_result_t cbor_encode_value_array_indefinite(cbor_value_slice_t values, slice_t target);
+cbor_encode_result_t cbor_encode_value_map_indefinite(cbor_pair_slice_t pairs, slice_t target);
 
 #endif /*CBOR_H*/

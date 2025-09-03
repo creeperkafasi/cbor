@@ -19,6 +19,11 @@
  ********************************/
 
 /*--------------------------------------------------------------------------*/
+// Helper function to check if we've hit the CBOR break/stop code (0xFF)
+static int cbor_is_break(const uint8_t* ptr) {
+    return ptr != NULL && *ptr == 0xFF;
+}
+/*--------------------------------------------------------------------------*/
 cbor_major_type_t cbor_get_major_type(const uint8_t *data)
 {
     return (*data) >> 5;
@@ -119,30 +124,48 @@ FN_RESULT (
         break;
     case CBOR_MAJOR_TYPE_BYTE_STRING:
         value.type = CBOR_TYPE_BYTE_STRING;
-        value.next = buf.ptr + value.argument.size + cbor_argument_to_fixed(value.argument) + 1;
         if (value.argument.tag == ARGUMENT_NONE) {
-            return ERR(cbor_parse_result_t, PARSER_TODO); // TODO indefinite length
+            // Indefinite length byte string
+            value.value.array = (cbor_array_t) {
+                .length = UINT32_MAX, // Special marker for indefinite length
+                .inside = buf.ptr + value.argument.size + 1,
+                .max_size = buf.len - (value.argument.size + 1),
+            };
+            value.next = NULL;
         }
         else {
             value.value.bytes.len = cbor_argument_to_fixed(value.argument);
             value.value.bytes.ptr = buf.ptr + value.argument.size + 1;
+            value.next = buf.ptr + value.argument.size + cbor_argument_to_fixed(value.argument) + 1;
         }
         break;
     case CBOR_MAJOR_TYPE_TEXT_STRING:
         value.type = CBOR_TYPE_TEXT_STRING;
-        value.next = buf.ptr + value.argument.size + cbor_argument_to_fixed(value.argument) + 1;
         if (value.argument.tag == ARGUMENT_NONE) {
-            return ERR(cbor_parse_result_t, PARSER_TODO); // TODO indefinite length
+            // Indefinite length text string
+            value.value.array = (cbor_array_t) {
+                .length = UINT32_MAX, // Special marker for indefinite length
+                .inside = buf.ptr + value.argument.size + 1,
+                .max_size = buf.len - (value.argument.size + 1),
+            };
+            value.next = NULL;
         }
         else {
             value.value.bytes.len = cbor_argument_to_fixed(value.argument);
             value.value.bytes.ptr = buf.ptr + value.argument.size + 1;
+            value.next = buf.ptr + value.argument.size + cbor_argument_to_fixed(value.argument) + 1;
         }
         break;
     case CBOR_MAJOR_TYPE_ARRAY:
         value.type = CBOR_TYPE_ARRAY;
         if (value.argument.tag == ARGUMENT_NONE) {
-            return ERR(cbor_parse_result_t, PARSER_TODO); // TODO indefinite length
+            // Indefinite length array
+            value.value.array = (cbor_array_t) {
+                .length = UINT32_MAX, // Special marker for indefinite length
+                .inside = buf.ptr + value.argument.size + 1,
+                .max_size = buf.len - (value.argument.size + 1),
+            };
+            value.next = NULL;
         }
         else {
             value.value.array = (cbor_array_t) {
@@ -156,7 +179,12 @@ FN_RESULT (
     case CBOR_MAJOR_TYPE_MAP:
         value.type = CBOR_TYPE_MAP;
         if (value.argument.tag == ARGUMENT_NONE) {
-            return ERR(cbor_parse_result_t, PARSER_TODO); // TODO indefinite length
+            // Indefinite length map
+            value.value.map = (cbor_map_t){
+                .length = UINT32_MAX, // Special marker for indefinite length
+                .inside = buf.ptr + value.argument.size + 1,
+                .max_size = buf.len - (value.argument.size + 1)
+            };
         }
         else {
             value.value.map = (cbor_map_t){
@@ -222,14 +250,111 @@ FN_RESULT (
     return OK(cbor_parse_result_t, value);
 }
 /*--------------------------------------------------------------------------*/
+uint8_t* cbor_process_indefinite_string(cbor_array_t string_chunks, cbor_type_t expected_type, single_processor_function process_single, void* process_arg) {
+    if (string_chunks.inside == NULL) {
+        return NULL;
+    }
+    
+    uint8_t* current = string_chunks.inside;
+    
+    // Process string chunks until we hit the break code (0xFF)
+    while (!cbor_is_break(current)) {
+        // Check bounds
+        if (current >= string_chunks.inside + string_chunks.max_size) {
+            printf("ERROR: String processing exceeded bounds in indefinite string\n");
+            return NULL;
+        }
+        
+        slice_t chunk_slice = (slice_t) {
+            .len = string_chunks.max_size - (current - string_chunks.inside),
+            .ptr = current,
+        };
+
+        cbor_parse_result_t chunk = cbor_parse(chunk_slice);
+
+        if (chunk.is_error) {
+            printf("STRING CHUNK RETURNED ERROR: %d\n", chunk.err);
+            return NULL;
+        }
+
+        // Verify the chunk is the correct string type
+        if (chunk.ok.type != expected_type) {
+            printf("ERROR: Mixed string types in indefinite string (expected %d, got %d)\n", expected_type, chunk.ok.type);
+            return NULL;
+        }
+
+        // Verify it's a definite length string chunk
+        if (chunk.ok.argument.tag == ARGUMENT_NONE) {
+            printf("ERROR: Indefinite length chunk within indefinite string\n");
+            return NULL;
+        }
+
+        if (process_single != NULL) {
+            process_single(&chunk.ok, process_arg);
+        }
+
+        current = chunk.ok.next;
+    }
+    
+    // Skip over the break code
+    return current + 1;
+}
+/*--------------------------------------------------------------------------*/
 uint8_t* cbor_process_array(cbor_array_t array, single_processor_function process_single, void* process_arg) {
     if (array.inside == NULL) {
         return NULL;
     }
     
+    uint8_t* current = array.inside;
+    
+    // Handle indefinite length arrays (length == UINT32_MAX)
+    if (array.length == UINT32_MAX) {
+        // Process elements until we hit the break code (0xFF)
+        while (!cbor_is_break(current)) {
+            // Check bounds
+            if (current >= array.inside + array.max_size) {
+                printf("ERROR: Array processing exceeded bounds in indefinite array\n");
+                return NULL;
+            }
+            
+            slice_t element_slice = (slice_t) {
+                .len = array.max_size - (current - array.inside),
+                .ptr = current,
+            };
+
+            cbor_parse_result_t element = cbor_parse(element_slice);
+
+            if (element.is_error) {
+                printf("ELEMENT RETURNED ERROR: %d\n", element.err);
+                return NULL;
+            }
+
+            if (process_single != NULL) {
+                process_single(&element.ok, process_arg);
+            }
+
+        if (element.ok.next == NULL) {
+            if (element.ok.type == CBOR_TYPE_MAP) {
+                element.ok.next = cbor_process_map(element.ok.value.map, NULL, process_arg);
+            } 
+            else if (element.ok.type == CBOR_TYPE_ARRAY) {
+                element.ok.next = cbor_process_array(element.ok.value.array, NULL, process_arg);
+            }
+            else if (element.ok.type == CBOR_TYPE_BYTE_STRING && element.ok.argument.tag == ARGUMENT_NONE) {
+                element.ok.next = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_BYTE_STRING, NULL, process_arg);
+            }
+            else if (element.ok.type == CBOR_TYPE_TEXT_STRING && element.ok.argument.tag == ARGUMENT_NONE) {
+                element.ok.next = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_TEXT_STRING, NULL, process_arg);
+            }
+        }            current = element.ok.next;
+        }
+        // Skip over the break code
+        return current + 1;
+    }
+    
+    // Handle definite length arrays
     if (array.length == 0) return array.inside;
 
-    uint8_t* current = array.inside;
     for (size_t i = 0; i < array.length; i++) {
         
         slice_t element_slice = (slice_t) {
@@ -254,7 +379,13 @@ uint8_t* cbor_process_array(cbor_array_t array, single_processor_function proces
             } 
             else if (element.ok.type == CBOR_TYPE_ARRAY) {
                 element.ok.next = cbor_process_array(element.ok.value.array, NULL, process_arg);
-            } 
+            }
+            else if (element.ok.type == CBOR_TYPE_BYTE_STRING && element.ok.argument.tag == ARGUMENT_NONE) {
+                element.ok.next = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_BYTE_STRING, NULL, process_arg);
+            }
+            else if (element.ok.type == CBOR_TYPE_TEXT_STRING && element.ok.argument.tag == ARGUMENT_NONE) {
+                element.ok.next = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_TEXT_STRING, NULL, process_arg);
+            }
         }
 
         current = element.ok.next;
@@ -267,9 +398,64 @@ uint8_t* cbor_process_map(cbor_map_t map, pair_processor_function process_pair, 
     if (map.inside == NULL) {
         return NULL;
     }
+    
+    uint8_t* current = map.inside;
+    
+    // Handle indefinite length maps (length == UINT32_MAX)
+    if (map.length == UINT32_MAX) {
+        // Process key-value pairs until we hit the break code (0xFF)
+        while (!cbor_is_break(current)) {
+            // Check bounds
+            if (current >= map.inside + map.max_size) {
+                printf("ERROR: Map processing exceeded bounds in indefinite map\n");
+                return NULL;
+            }
+            
+            // Parse key
+            slice_t key_slice = {
+                .len = map.max_size - (current - map.inside),
+                .ptr = current
+            };
+            cbor_parse_result_t key_v = cbor_parse(key_slice);
+
+            if (key_v.is_error) {
+                printf("KEY RETURNED ERROR: %d\n", key_v.err);
+                return NULL;
+            }
+
+            // Parse value
+            slice_t value_slice = {
+                .len = map.max_size - (current - map.inside),
+                .ptr = key_v.ok.next
+            };
+            cbor_parse_result_t value_v = cbor_parse(value_slice);
+
+            if (value_v.is_error) {
+                printf("VALUE RETURNED ERROR: %d\n", value_v.err);
+                return NULL;
+            }
+
+            if (process_pair != NULL) {
+                process_pair((const cbor_value_t*)&key_v.ok, (const cbor_value_t*)&value_v.ok, process_arg);
+            }
+
+            if (value_v.ok.next == NULL) {
+                if (value_v.ok.type == CBOR_TYPE_MAP) {
+                    value_v.ok.next = cbor_process_map(value_v.ok.value.map, NULL, process_arg);
+                }
+                else if (value_v.ok.type == CBOR_TYPE_ARRAY) {
+                    value_v.ok.next = cbor_process_array(value_v.ok.value.array, NULL, process_arg);
+                }
+            }
+            current = value_v.ok.next;
+        }
+        // Skip over the break code
+        return current + 1;
+    }
+    
+    // Handle definite length maps
     if (map.length == 0) return map.inside;
 
-    uint8_t* current = map.inside;
     for (size_t i = 0; i < map.length; i++) {
         // printf("Current: %3d\n", current - buf);
 
@@ -305,6 +491,12 @@ uint8_t* cbor_process_map(cbor_map_t map, pair_processor_function process_pair, 
             }
             else if (value_v.ok.type == CBOR_TYPE_ARRAY) {
                 value_v.ok.next = cbor_process_array(value_v.ok.value.array, NULL, process_arg);
+            }
+            else if (value_v.ok.type == CBOR_TYPE_BYTE_STRING && value_v.ok.argument.tag == ARGUMENT_NONE) {
+                value_v.ok.next = cbor_process_indefinite_string(value_v.ok.value.array, CBOR_TYPE_BYTE_STRING, NULL, process_arg);
+            }
+            else if (value_v.ok.type == CBOR_TYPE_TEXT_STRING && value_v.ok.argument.tag == ARGUMENT_NONE) {
+                value_v.ok.next = cbor_process_indefinite_string(value_v.ok.value.array, CBOR_TYPE_TEXT_STRING, NULL, process_arg);
             }
         }
         current = value_v.ok.next;
@@ -352,6 +544,18 @@ uint8_t write_len_header(size_t len, cbor_major_type_t major_type, slice_t targe
     #endif
     
     return header_size;
+}
+
+uint8_t write_indefinite_header(cbor_major_type_t major_type, slice_t target) {
+    if (target.len < 1) return 0;
+    target.ptr[0] = (uint8_t)((major_type << 5) | 31);
+    return 1;
+}
+
+uint8_t write_break_code(slice_t target) {
+    if (target.len < 1) return 0;
+    target.ptr[0] = 0xFF;
+    return 1;
 }
 
 cbor_encode_result_t cbor_encode_integer(int64_t integer, slice_t target) {
@@ -505,6 +709,156 @@ cbor_encode_result_t cbor_encode_float(float value, enum cbor_float_precision pr
     return OK(cbor_encode_result_t, target);
 }
 
+cbor_encode_result_t cbor_encode_indefinite_string(cbor_value_slice_t chunks, cbor_major_type_t major_type, slice_t target) {
+    slice_t current = target;
+    size_t total_len = 0;
+
+    if (!chunks.ptr && chunks.len > 0) {
+        return ERR(cbor_encode_result_t, CBOR_ENCODER_NULL_PTR_ERROR);
+    }
+
+    // Check minimum buffer size for header + break
+    if (target.len < 2) {
+        return ERR(cbor_encode_result_t, CBOR_ENCODER_ERROR_BUFFER_OVERFLOW);
+    }
+
+    // Encode the indefinite length header
+    uint8_t header_size = write_indefinite_header(major_type, current);
+    current.ptr += header_size;
+    current.len -= header_size;
+    total_len += header_size;
+
+    // Encode the string chunks
+    for (size_t i = 0; i < chunks.len; i++) {
+        // Verify chunk is the correct string type
+        if (chunks.ptr[i].type != CBOR_TYPE_BYTE_STRING && chunks.ptr[i].type != CBOR_TYPE_TEXT_STRING) {
+            return ERR(cbor_encode_result_t, CBOR_ENCODER_TODO); // Invalid chunk type
+        }
+        
+        // Verify major type matches expected
+        cbor_type_t expected_type = (major_type == CBOR_MAJOR_TYPE_BYTE_STRING) ? CBOR_TYPE_BYTE_STRING : CBOR_TYPE_TEXT_STRING;
+        if (chunks.ptr[i].type != expected_type) {
+            return ERR(cbor_encode_result_t, CBOR_ENCODER_TODO); // Mixed string types
+        }
+
+        cbor_encode_result_t encoded = cbor_encode(chunks.ptr[i], current);
+        if (encoded.is_error) {
+            return encoded;
+        }
+        current.ptr += encoded.ok.len;
+        current.len -= encoded.ok.len;
+        total_len += encoded.ok.len;
+    }
+
+    // Write the break code
+    uint8_t break_size = write_break_code(current);
+    if (break_size == 0) {
+        return ERR(cbor_encode_result_t, CBOR_ENCODER_ERROR_BUFFER_OVERFLOW);
+    }
+    total_len += break_size;
+
+    return OK(cbor_encode_result_t, ((slice_t){
+        .ptr = target.ptr,
+        .len = total_len
+    }));
+}
+
+cbor_encode_result_t cbor_encode_value_array_indefinite(cbor_value_slice_t values, slice_t target) {
+    slice_t current = target;
+    size_t total_len = 0;
+
+    if (!values.ptr && values.len > 0) {
+        return ERR(cbor_encode_result_t, CBOR_ENCODER_NULL_PTR_ERROR);
+    }
+
+    // Check minimum buffer size for header + break
+    if (target.len < 2) {
+        return ERR(cbor_encode_result_t, CBOR_ENCODER_ERROR_BUFFER_OVERFLOW);
+    }
+
+    // Encode the indefinite length header
+    uint8_t header_size = write_indefinite_header(CBOR_MAJOR_TYPE_ARRAY, current);
+    current.ptr += header_size;
+    current.len -= header_size;
+    total_len += header_size;
+
+    // Encode the elements
+    for (size_t i = 0; i < values.len; i++) {
+        cbor_encode_result_t encoded = cbor_encode(values.ptr[i], current);
+        if (encoded.is_error) {
+            return encoded;
+        }
+        current.ptr += encoded.ok.len;
+        current.len -= encoded.ok.len;
+        total_len += encoded.ok.len;
+    }
+
+    // Write the break code
+    uint8_t break_size = write_break_code(current);
+    if (break_size == 0) {
+        return ERR(cbor_encode_result_t, CBOR_ENCODER_ERROR_BUFFER_OVERFLOW);
+    }
+    total_len += break_size;
+
+    return OK(cbor_encode_result_t, ((slice_t){
+        .ptr = target.ptr,
+        .len = total_len
+    }));
+}
+
+cbor_encode_result_t cbor_encode_value_map_indefinite(cbor_pair_slice_t pairs, slice_t target) {
+    slice_t current = target;
+    size_t total_len = 0;
+
+    if (!pairs.ptr && pairs.len > 0) {
+        return ERR(cbor_encode_result_t, CBOR_ENCODER_NULL_PTR_ERROR);
+    }
+
+    // Check minimum buffer size for header + break
+    if (target.len < 2) {
+        return ERR(cbor_encode_result_t, CBOR_ENCODER_ERROR_BUFFER_OVERFLOW);
+    }
+
+    // Encode the indefinite length header
+    uint8_t header_size = write_indefinite_header(CBOR_MAJOR_TYPE_MAP, current);
+    current.ptr += header_size;
+    current.len -= header_size;
+    total_len += header_size;
+
+    // Encode the key-value pairs
+    for (size_t i = 0; i < pairs.len; i++) {
+        // Encode key
+        cbor_encode_result_t encoded_first = cbor_encode(pairs.ptr[i].first, current);
+        if (encoded_first.is_error) {
+            return encoded_first;
+        }
+        current.ptr += encoded_first.ok.len;
+        current.len -= encoded_first.ok.len;
+        total_len += encoded_first.ok.len;
+
+        // Encode value
+        cbor_encode_result_t encoded_second = cbor_encode(pairs.ptr[i].second, current);
+        if (encoded_second.is_error) {
+            return encoded_second;
+        }
+        current.ptr += encoded_second.ok.len;
+        current.len -= encoded_second.ok.len;
+        total_len += encoded_second.ok.len;
+    }
+
+    // Write the break code
+    uint8_t break_size = write_break_code(current);
+    if (break_size == 0) {
+        return ERR(cbor_encode_result_t, CBOR_ENCODER_ERROR_BUFFER_OVERFLOW);
+    }
+    total_len += break_size;
+
+    return OK(cbor_encode_result_t, ((slice_t){
+        .ptr = target.ptr,
+        .len = total_len
+    }));
+}
+
 cbor_encode_result_t cbor_encode_value_array(cbor_value_slice_t values, slice_t target) {
     slice_t current = target;
     size_t total_len = 0;
@@ -611,6 +965,14 @@ cbor_encode, cbor_value_t value, slice_t target) {
             return cbor_encode_value_array(value.value.values, target);
         case CBOR_ENCODE_TYPE_PAIRS:
             return cbor_encode_value_map(value.value.pairs, target);
+        case CBOR_ENCODE_TYPE_VALUES_INDEFINITE:
+            return cbor_encode_value_array_indefinite(value.value.values, target);
+        case CBOR_ENCODE_TYPE_PAIRS_INDEFINITE:
+            return cbor_encode_value_map_indefinite(value.value.pairs, target);
+        case CBOR_ENCODE_TYPE_BYTE_STRING_INDEFINITE:
+            return cbor_encode_indefinite_string(value.value.values, CBOR_MAJOR_TYPE_BYTE_STRING, target);
+        case CBOR_ENCODE_TYPE_TEXT_STRING_INDEFINITE:
+            return cbor_encode_indefinite_string(value.value.values, CBOR_MAJOR_TYPE_TEXT_STRING, target);
         case CBOR_ENCODE_TYPE_CUSTOM_ENCODER:
             {
                 custom_encoder_result_t result = value.value.custom_encoder.encoder(target, value.value.custom_encoder.argument);
