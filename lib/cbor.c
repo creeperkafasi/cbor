@@ -189,23 +189,17 @@ FN_RESULT (
             break;
         case ARGUMENT_2BYTE:
             // f16
-            // TODO: not every device has _Float16
-#if __HAVE_FLOAT16
-            value.value.floating = (float)*(_Float16*)&value.argument._2byte;
-#else
-            // TODO
-#endif
+            value.value.floating = half_to_float(value.argument._2byte);
             value.type = CBOR_TYPE_FLOAT;
             break;
         case ARGUMENT_4BYTE:
             // f32
-
-            value.value.floating = (float)*(Float32*)&value.argument._4byte;
+            value.value.floating = *(float*)&value.argument._4byte;
             value.type = CBOR_TYPE_FLOAT;
             break;
         case ARGUMENT_8BYTE:
             // f64
-            value.value.floating = (float)*(Float64*)&value.argument._8byte;
+            value.value.floating = double_to_float(*(double*)&value.argument._8byte);
             value.type = CBOR_TYPE_FLOAT;
             break;
         default:
