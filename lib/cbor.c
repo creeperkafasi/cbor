@@ -1,8 +1,14 @@
 #include "cbor.h"
 #include <stdio.h>
 #include <stdint.h>
+#if defined(__linux__) || defined(__unix__) || defined(__APPLE__) || defined(__FreeBSD__)
 #include <endian.h>
+#else 
+#include "compat/endian.h"
+#endif
 #include <string.h>
+
+#include "compat/float.h"
 
 #define CBOR_FLOAT_PRECISION_DEFAULT CBOR_FLOAT_PRECISION_SINGLE
 
@@ -19,7 +25,7 @@ cbor_major_type_t get_major_type(const uint8_t *data)
 }
 /*--------------------------------------------------------------------------*/
 argument_t get_argument(const uint8_t* data) {
-    uint8_t argument = (*data) & 0b00011111;
+    uint8_t argument = (*data) & 0x1F;
 
     if (argument < 24) {
         return (argument_t){
@@ -193,12 +199,13 @@ FN_RESULT (
             break;
         case ARGUMENT_4BYTE:
             // f32
-            value.value.floating = (float)*(_Float32*)&value.argument._4byte;
+
+            value.value.floating = (float)*(Float32*)&value.argument._4byte;
             value.type = CBOR_TYPE_FLOAT;
             break;
         case ARGUMENT_8BYTE:
             // f64
-            value.value.floating = (float)*(_Float64*)&value.argument._8byte;
+            value.value.floating = (float)*(Float64*)&value.argument._8byte;
             value.type = CBOR_TYPE_FLOAT;
             break;
         default:
@@ -310,6 +317,41 @@ uint8_t* process_map(cbor_map_t map, pair_processor_function process_pair, void*
  ********************************/
 
 
+uint8_t write_len_header(size_t len, cbor_major_type_t major_type, slice_t target) {
+    uint8_t header_size = 0;
+    if (len <= 23) {
+        target.ptr[0] = (uint8_t)((major_type << 5) | len);
+        header_size = 1;
+    }
+    else if (len <= UINT8_MAX) {
+        target.ptr[0] = (uint8_t)((major_type << 5) | 24);
+        target.ptr[1] = (uint8_t)len;
+        header_size = 2;
+    }
+    else if (len <= UINT16_MAX) {
+        target.ptr[0] = (uint8_t)((major_type << 5) | 25);
+        uint16_t bytes = htobe16((uint16_t)len);
+        memcpy(&target.ptr[1], &bytes, sizeof(bytes));
+        header_size = 3;
+    }
+    else if (len <= UINT32_MAX) {
+        target.ptr[0] = (uint8_t)((major_type << 5) | 26);
+        uint32_t bytes = htobe32((uint32_t)len);
+        memcpy(&target.ptr[1], &bytes, sizeof(bytes));
+        header_size = 5;
+    }
+    #if SIZE_MAX > UINT32_MAX
+    else if (len <= UINT64_MAX) {
+        target.ptr[0] = (uint8_t)((major_type << 5) | 27);
+        uint64_t bytes = htobe64((uint64_t)len);
+        memcpy(&target.ptr[1], &bytes, sizeof(bytes));
+        header_size = 9;
+    }
+    #endif
+    
+    return header_size;
+}
+
 encode_result_t cbor_encode_integer(int64_t integer, slice_t target) {
     cbor_major_type_t major_type = CBOR_MAJOR_TYPE_UNSIGNED_INTEGER;
     if (integer < 0) {
@@ -377,9 +419,11 @@ encode_result_t cbor_encode_string(slice_t string, cbor_type_t type, slice_t tar
     else if (string.len <= UINT32_MAX) {
         header_size = 5;
     }
+    #if SIZE_MAX > UINT32_MAX
     else if (string.len <= UINT64_MAX) {
         header_size = 9;
     }
+    #endif
 
     if (target.len < (header_size + string.len)) {
         return ERR(encode_result_t, CBOR_ENCODER_ERROR_BUFFER_OVERFLOW);
@@ -390,28 +434,7 @@ encode_result_t cbor_encode_string(slice_t string, cbor_type_t type, slice_t tar
         major_type = CBOR_MAJOR_TYPE_BYTE_STRING;
     }
 
-    if (string.len <= 23) {
-        target.ptr[0] = (uint8_t)((major_type << 5) | string.len);
-    }
-    else if (string.len <= UINT8_MAX) {
-        target.ptr[0] = (uint8_t)((major_type << 5) | 24);
-        target.ptr[1] = (uint8_t)string.len;
-    }
-    else if (string.len <= UINT16_MAX) {
-        target.ptr[0] = (uint8_t)((major_type << 5) | 25);
-        uint16_t len = htobe16((uint16_t)string.len);
-        memcpy(&target.ptr[1], &len, sizeof(len));
-    }
-    else if (string.len <= UINT32_MAX) {
-        target.ptr[0] = (uint8_t)((major_type << 5) | 26);
-        uint32_t len = htobe32((uint32_t)string.len);
-        memcpy(&target.ptr[1], &len, sizeof(len));
-    }
-    else if (string.len <= UINT64_MAX) {
-        target.ptr[0] = (uint8_t)((major_type << 5) | 27);
-        uint64_t len = htobe64((uint64_t)string.len);
-        memcpy(&target.ptr[1], &len, sizeof(len));
-    }
+    write_len_header(string.len, major_type, target);
 
     memcpy(&target.ptr[header_size], string.ptr, string.len);
 
@@ -487,43 +510,10 @@ encode_result_t cbor_encode_value_array(cbor_value_slice_t values, slice_t targe
     }
 
     // Encode the header
-    if (values.len <= 23) {
-        target.ptr[0] = (uint8_t)((CBOR_MAJOR_TYPE_ARRAY << 5) | values.len);
-        current.ptr += 1;
-        current.len -= 1;
-        total_len += 1;
-    }
-    else if (values.len <= UINT8_MAX) {
-        target.ptr[0] = (uint8_t)((CBOR_MAJOR_TYPE_ARRAY << 5) | 24);
-        target.ptr[1] = (uint8_t)values.len;
-        current.ptr += 2;
-        current.len -= 2;
-        total_len += 2;
-    }
-    else if (values.len <= UINT16_MAX) {
-        target.ptr[0] = (uint8_t)((CBOR_MAJOR_TYPE_ARRAY << 5) | 25);
-        uint16_t len = htobe16((uint16_t)values.len);
-        memcpy(&target.ptr[1], &len, sizeof(len));
-        current.ptr += 3;
-        current.len -= 3;
-        total_len += 3;
-    }
-    else if (values.len <= UINT32_MAX) {
-        target.ptr[0] = (uint8_t)((CBOR_MAJOR_TYPE_ARRAY << 5) | 26);
-        uint32_t len = htobe32((uint32_t)values.len);
-        memcpy(&target.ptr[1], &len, sizeof(len));
-        current.ptr += 5;
-        current.len -= 5;
-        total_len += 5;
-    }
-    else if (values.len <= UINT64_MAX) {
-        target.ptr[0] = (uint8_t)((CBOR_MAJOR_TYPE_ARRAY << 5) | 27);
-        uint64_t len = htobe64((uint64_t)values.len);
-        memcpy(&target.ptr[1], &len, sizeof(len));
-        current.ptr += 9;
-        current.len -= 9;
-        total_len += 9;
-    }
+    uint8_t header_size = write_len_header(values.len, CBOR_MAJOR_TYPE_ARRAY, current);
+    current.ptr += header_size;
+    current.len -= header_size;
+    total_len += header_size;
 
     // Encode the elements
     for (size_t i = 0; i < values.len; i++) {
@@ -557,43 +547,10 @@ encode_result_t cbor_encode_value_map(cbor_pair_slice_t pairs, slice_t target) {
     }
 
     // Encode the header
-    if (pairs.len <= 23) {
-        target.ptr[0] = (uint8_t)((CBOR_MAJOR_TYPE_MAP << 5) | pairs.len);
-        current.ptr += 1;
-        current.len -= 1;
-        total_len += 1;
-    }
-    else if (pairs.len <= UINT8_MAX) {
-        target.ptr[0] = (uint8_t)((CBOR_MAJOR_TYPE_MAP << 5) | 24);
-        target.ptr[1] = (uint8_t)pairs.len;
-        current.ptr += 2;
-        current.len -= 2;
-        total_len += 2;
-    }
-    else if (pairs.len <= UINT16_MAX) {
-        target.ptr[0] = (uint8_t)((CBOR_MAJOR_TYPE_MAP << 5) | 25);
-        uint16_t len = htobe16((uint16_t)pairs.len);
-        memcpy(&target.ptr[1], &len, sizeof(len));
-        current.ptr += 3;
-        current.len -= 3;
-        total_len += 3;
-    }
-    else if (pairs.len <= UINT32_MAX) {
-        target.ptr[0] = (uint8_t)((CBOR_MAJOR_TYPE_MAP << 5) | 26);
-        uint32_t len = htobe32((uint32_t)pairs.len);
-        memcpy(&target.ptr[1], &len, sizeof(len));
-        current.ptr += 5;
-        current.len -= 5;
-        total_len += 5;
-    }
-    else if (pairs.len <= UINT64_MAX) {
-        target.ptr[0] = (uint8_t)((CBOR_MAJOR_TYPE_MAP << 5) | 27);
-        uint64_t len = htobe64((uint64_t)pairs.len);
-        memcpy(&target.ptr[1], &len, sizeof(len));
-        current.ptr += 9;
-        current.len -= 9;
-        total_len += 9;
-    }
+    uint8_t header_size = write_len_header(pairs.len, CBOR_MAJOR_TYPE_MAP, current);
+    current.ptr += header_size;
+    current.len -= header_size;
+    total_len += header_size;
 
     // Encode the elements
     for (size_t i = 0; i < pairs.len; i++) {

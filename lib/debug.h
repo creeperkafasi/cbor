@@ -2,6 +2,7 @@
 #define CBOR_DEBUG_H
 
 #include "cbor.h"
+#include <inttypes.h>
 
 void print_cbor_value(cbor_value_t value, int indent);
 void print_cbor_type(cbor_major_type_t type);

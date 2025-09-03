@@ -14,29 +14,7 @@
 #include "config.h"
 
 /*--------------------------------------------------------------------------*/
-typedef struct {
-    size_t len;
-    uint8_t* ptr;
-} slice_t;
-
-#define SLICE2BUF(buf, slice) \
-    do { \
-        assert(sizeof(buf) >= (slice).len + 1); \
-        memcpy((buf), (slice).ptr, (slice).len); \
-        (buf)[(slice).len] = 0; \
-    } while (0)
-
-#define BUF2SLICE(buf) \
-    ((slice_t) { \
-        .len = strlen((char*)(buf)), \
-        .ptr = (uint8_t*)(buf) \
-    })
-
-#define STR2SLICE(str) \
-    ((slice_t) { \
-        .len = sizeof(str) - 1, \
-        .ptr = (uint8_t*)(str) \
-    })
+/* Basic Types and Constants */
 /*--------------------------------------------------------------------------*/
 
 typedef enum {
@@ -49,6 +27,7 @@ typedef enum {
     CBOR_MAJOR_TYPE_TAG              = 6,
     CBOR_MAJOR_TYPE_SIMPLE           = 7,
 } cbor_major_type_t;
+
 typedef enum {
     CBOR_ERROR = -1,
     CBOR_TYPE_INTEGER          = 0,
@@ -65,13 +44,38 @@ typedef enum {
     CBOR_ENCODE_TYPE_CUSTOM_ENCODER
 } cbor_type_t;
 
+typedef enum {
+    CBOR_SIMPLE_FALSE,
+    CBOR_SIMPLE_TRUE,
+    CBOR_SIMPLE_NULL,
+    CBOR_SIMPLE_UNDEFINED,
+    CBOR_SIMPLE_ERROR_RESERVED,
+    CBOR_SIMPLE_ERROR_UNASSIGNED
+} cbor_simple_t;
+
+typedef enum {
+    CBOR_ENCODER_NULL_PTR_ERROR,
+    CBOR_ENCODER_ERROR_BUFFER_OVERFLOW,
+    CBOR_ENCODER_TODO,
+    CBOR_ENCODER_UNKNOWN_SIZE
+} cbor_encode_error_t;
+
+typedef enum {
+    NULL_PTR_ERROR,
+    EMPTY_BUFFER_ERROR,
+    MALFORMED_INPUT_ERROR,
+    PARSER_TODO
+} cbor_parser_error_t;
 
 /*--------------------------------------------------------------------------*/
-/**
- * Get the Major Type (first 3 bits)
- */
-cbor_major_type_t get_major_type(const uint8_t* data); 
+/* Core Data Structures */
 /*--------------------------------------------------------------------------*/
+
+typedef struct {
+    size_t len;
+    uint8_t* ptr;
+} slice_t;
+
 typedef struct argument_t {
     enum argument_t_tag {
         ARGUMENT_NONE,  // Indefinite
@@ -89,15 +93,6 @@ typedef struct argument_t {
         uint64_t _8byte;
     };
 } argument_t;
-/**
- * Get the Argument (last 5 bits)
- * The value of the argument is stored in the fields _1byte, _2byte, _4byte or _8byte depending on the size of the argument.
- * The argument byte size is stored in the .size field
- */
-argument_t get_argument(const uint8_t* data);
-// Check for malformed input before calling this
-uint64_t argument_to_fixed(argument_t arg);
-/*--------------------------------------------------------------------------*/
 
 typedef struct {
     uint32_t length;
@@ -116,34 +111,23 @@ typedef struct {
     uint8_t* value;
 } cbor_map_entry_t;
 
-typedef enum {
-    CBOR_SIMPLE_FALSE,
-    CBOR_SIMPLE_TRUE,
-    CBOR_SIMPLE_NULL,
-    CBOR_SIMPLE_UNDEFINED,
-    CBOR_SIMPLE_ERROR_RESERVED,
-    CBOR_SIMPLE_ERROR_UNASSIGNED
-} cbor_simple_t;
+/* Forward declarations for recursive types */
+typedef struct cbor_value_s cbor_value_t;
+typedef struct cbor_pair_s cbor_pair_t;
 
-typedef struct cbor_value_s cbor_value_s;
 typedef struct {
     size_t len;
-    cbor_value_s *ptr;
+    cbor_value_t *ptr;
 } cbor_value_slice_t;
-
-typedef struct cbor_pair_s cbor_pair_t;
 
 typedef struct {
     size_t len;
     cbor_pair_t* ptr;
 } cbor_pair_slice_t;
 
-typedef enum cbor_encode_error_t {
-    CBOR_ENCODER_NULL_PTR_ERROR,
-    CBOR_ENCODER_ERROR_BUFFER_OVERFLOW,
-    CBOR_ENCODER_TODO,
-    CBOR_ENCODER_UNKNOWN_SIZE
-} cbor_encode_error_t;
+/*--------------------------------------------------------------------------*/
+/* Encoder Types */
+/*--------------------------------------------------------------------------*/
 
 DEFINE_RESULT_TYPE(slice_t, cbor_encode_error_t);
 typedef RESULT_TYPE_NAME(slice_t, cbor_encode_error_t) custom_encoder_result_t;
@@ -154,6 +138,10 @@ typedef struct {
     custom_encoder_function_t encoder;
     void* argument;
 } cbor_custom_encoder_t;
+
+/*--------------------------------------------------------------------------*/
+/* Main CBOR Value Structure */
+/*--------------------------------------------------------------------------*/
 
 typedef struct cbor_value_s {
     cbor_type_t type;
@@ -174,45 +162,32 @@ typedef struct cbor_value_s {
 } cbor_value_t;
 
 typedef struct cbor_pair_s {
-    cbor_value_s first;
-    cbor_value_s second;
+    cbor_value_t first;
+    cbor_value_t second;
 } cbor_pair_t;
 
-typedef enum {
-    NULL_PTR_ERROR,
-    EMPTY_BUFFER_ERROR,
-    MALFORMED_INPUT_ERROR,
-    PARSER_TODO
-} cbor_parser_error_t;
-
-DEFINE_RESULT_TYPE(cbor_value_t, cbor_parser_error_t);
-FN_RESULT (
-    cbor_value_t, cbor_parser_error_t,
-    parse, slice_t buf
-);
 /*--------------------------------------------------------------------------*/
-typedef void (*pair_processor_function)(const cbor_value_t* key, const cbor_value_t* value, void* process_arg);
-typedef void (*single_processor_function)(const cbor_value_t* value, void* process_arg);
-
-uint8_t* process_array(cbor_array_t array, single_processor_function process_single, void* process_arg);
-/**
- * Iterates over a map using the process_pair function
- */
-uint8_t* process_map(cbor_map_t map, pair_processor_function process_pair, void* process_arg);
+/* Utility Macros */
 /*--------------------------------------------------------------------------*/
 
+#define SLICE2BUF(buf, slice) \
+    do { \
+        assert(sizeof(buf) >= (slice).len + 1); \
+        memcpy((buf), (slice).ptr, (slice).len); \
+        (buf)[(slice).len] = 0; \
+    } while (0)
 
-/********************************
- * 
- * ENCODING
- * 
- ********************************/
+#define BUF2SLICE(buf) \
+    ((slice_t) { \
+        .len = strlen((char*)(buf)), \
+        .ptr = (uint8_t*)(buf) \
+    })
 
-
-
-DEFINE_RESULT_TYPE(slice_t, cbor_encode_error_t);
-FN_RESULT(slice_t, cbor_encode_error_t,
-encode, cbor_value_t value, slice_t target);
+#define STR2SLICE(str) \
+    ((slice_t) { \
+        .len = sizeof(str) - 1, \
+        .ptr = (uint8_t*)(str) \
+    })
 
 #define ARRAY_TO_SLICE(type, array) (type) { .len = sizeof(array) / sizeof(array[0]), .ptr = array }
 
@@ -220,5 +195,31 @@ encode, cbor_value_t value, slice_t target);
 
 #define PAIR(first, second) (cbor_pair_t) {.first = (cbor_value_t)(first), .second = (cbor_value_t)(second)}
 #define PAIRS(array) ARRAY_TO_SLICE(cbor_pair_slice_t, array)
+
+/*--------------------------------------------------------------------------*/
+/* Function Declarations */
+/*--------------------------------------------------------------------------*/
+
+/* Parser Functions */
+cbor_major_type_t get_major_type(const uint8_t* data);
+argument_t get_argument(const uint8_t* data);
+uint64_t argument_to_fixed(argument_t arg);
+
+DEFINE_RESULT_TYPE(cbor_value_t, cbor_parser_error_t);
+FN_RESULT (
+    cbor_value_t, cbor_parser_error_t,
+    parse, slice_t buf
+);
+
+/* Processing Functions */
+typedef void (*pair_processor_function)(const cbor_value_t* key, const cbor_value_t* value, void* process_arg);
+typedef void (*single_processor_function)(const cbor_value_t* value, void* process_arg);
+
+uint8_t* process_array(cbor_array_t array, single_processor_function process_single, void* process_arg);
+uint8_t* process_map(cbor_map_t map, pair_processor_function process_pair, void* process_arg);
+
+/* Encoding Functions */
+FN_RESULT(slice_t, cbor_encode_error_t,
+encode, cbor_value_t value, slice_t target);
 
 #endif /*CBOR_H*/
