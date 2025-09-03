@@ -10,10 +10,11 @@
 #define RESULT_H
 
 /*--------------------------------------------------------------------------*/
+#define RESULT_STRUCT_NAME(oktype, errtype) result_ ## oktype ## _ ## errtype ## _s
 #define RESULT_TYPE_NAME(oktype, errtype) result_ ## oktype ## _ ## errtype ## _t
 
 #define RESULT_STRUCT(type, errortype)            \
-struct {                                          \
+struct RESULT_STRUCT_NAME(type, errortype) {      \
     uint8_t is_error;                             \
     union {                                       \
         type ok;                                  \

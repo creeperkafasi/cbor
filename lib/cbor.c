@@ -646,10 +646,18 @@ encode, cbor_value_t value, slice_t target) {
             return cbor_encode_simple(value.value.simple, target);
         case CBOR_TYPE_FLOAT:
             return cbor_encode_float(value.value.floating, CBOR_FLOAT_PRECISION_DEFAULT, target);
-        case CBOR_TYPE_VALUES:
+        case CBOR_ENCODE_TYPE_VALUES:
             return cbor_encode_value_array(value.value.values, target);
-        case CBOR_TYPE_PAIRS:
+        case CBOR_ENCODE_TYPE_PAIRS:
             return cbor_encode_value_map(value.value.pairs, target);
+        case CBOR_ENCODE_TYPE_CUSTOM_ENCODER:
+            {
+                custom_encoder_result_t result = value.value.custom_encoder.encoder(target, value.value.custom_encoder.argument);
+                if (result.is_error) {
+                    return ERR(encode_result_t, CBOR_ENCODER_TODO);
+                }
+                return OK(encode_result_t, result.ok);
+            }
         default:
             return ERR(encode_result_t, CBOR_ENCODER_TODO);
     }

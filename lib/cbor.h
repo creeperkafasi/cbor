@@ -31,6 +31,12 @@ typedef struct {
         .len = strlen((char*)(buf)), \
         .ptr = (uint8_t*)(buf) \
     })
+
+#define STR2SLICE(str) \
+    ((slice_t) { \
+        .len = sizeof(str) - 1, \
+        .ptr = (uint8_t*)(str) \
+    })
 /*--------------------------------------------------------------------------*/
 
 typedef enum {
@@ -54,8 +60,9 @@ typedef enum {
     CBOR_TYPE_SIMPLE           = 7,
     CBOR_TYPE_FLOAT            = 8,
 
-    CBOR_TYPE_VALUES, // For encoding
-    CBOR_TYPE_PAIRS,  // For encoding
+    CBOR_ENCODE_TYPE_VALUES,
+    CBOR_ENCODE_TYPE_PAIRS,
+    CBOR_ENCODE_TYPE_CUSTOM_ENCODER
 } cbor_type_t;
 
 
@@ -131,6 +138,23 @@ typedef struct {
     cbor_pair_t* ptr;
 } cbor_pair_slice_t;
 
+typedef enum cbor_encode_error_t {
+    CBOR_ENCODER_NULL_PTR_ERROR,
+    CBOR_ENCODER_ERROR_BUFFER_OVERFLOW,
+    CBOR_ENCODER_TODO,
+    CBOR_ENCODER_UNKNOWN_SIZE
+} cbor_encode_error_t;
+
+DEFINE_RESULT_TYPE(slice_t, cbor_encode_error_t);
+typedef RESULT_TYPE_NAME(slice_t, cbor_encode_error_t) custom_encoder_result_t;
+
+typedef custom_encoder_result_t (*custom_encoder_function_t)(slice_t target, void* arg);
+
+typedef struct {
+    custom_encoder_function_t encoder;
+    void* argument;
+} cbor_custom_encoder_t;
+
 typedef struct cbor_value_s {
     cbor_type_t type;
     argument_t argument;
@@ -144,6 +168,7 @@ typedef struct cbor_value_s {
         cbor_simple_t simple;
         cbor_value_slice_t values;
         cbor_pair_slice_t pairs;
+        cbor_custom_encoder_t custom_encoder;
     } value;
     uint8_t *next;
 } cbor_value_t;
@@ -183,15 +208,17 @@ uint8_t* process_map(cbor_map_t map, pair_processor_function process_pair, void*
  * 
  ********************************/
 
-typedef enum {
-    CBOR_ENCODER_NULL_PTR_ERROR,
-    CBOR_ENCODER_ERROR_BUFFER_OVERFLOW,
-    CBOR_ENCODER_TODO,
-    CBOR_ENCODER_UNKNOWN_SIZE
-} cbor_encode_error_t;
+
 
 DEFINE_RESULT_TYPE(slice_t, cbor_encode_error_t);
 FN_RESULT(slice_t, cbor_encode_error_t,
 encode, cbor_value_t value, slice_t target);
+
+#define ARRAY_TO_SLICE(type, array) (type) { .len = sizeof(array) / sizeof(array[0]), .ptr = array }
+
+#define VALUES(array) (ARRAY_TO_SLICE(cbor_value_slice_t, array))
+
+#define PAIR(first, second) (cbor_pair_t) {.first = (cbor_value_t)(first), .second = (cbor_value_t)(second)}
+#define PAIRS(array) ARRAY_TO_SLICE(cbor_pair_slice_t, array)
 
 #endif /*CBOR_H*/

@@ -6,40 +6,113 @@
 #include "cbor.h"
 #include "debug.h"
 
-// uint8_t buf[] = {
-// 0xA3, 0x61, 0x64, 0xA2, 0x61, 0x66, 0x63, 0x58,
-// 0x59, 0x5A, 0x62, 0x73, 0x6E, 0x6F, 0x30, 0x31,
-// 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
-// 0x41, 0x42, 0x43, 0x44, 0x45, 0x62, 0x66, 0x6E,
-// 0x02, 0x63, 0x72, 0x69, 0x64, 0x78, 0x24, 0x33,
-// 0x64, 0x30, 0x62, 0x32, 0x34, 0x32, 0x65, 0x2D,
-// 0x31, 0x38, 0x36, 0x36, 0x2D, 0x34, 0x61, 0x34,
-// 0x31, 0x2D, 0x61, 0x38, 0x63, 0x61, 0x2D, 0x31,
-// 0x33, 0x37, 0x32, 0x66, 0x31, 0x62, 0x33, 0x34,
-// 0x61, 0x62, 0x37,
-// };
-
 uint8_t buf[512] = {0};
 
 typedef struct {
     slice_t f;
     slice_t sn;
-    int number;
 } device_info_t;
 
 typedef struct {
     device_info_t d;
     int fn;
-    slice_t rid;
+    int64_t rid;
 } identification_request_t;
 
+custom_encoder_result_t encode_device_info(slice_t target, void* arg) {
 
-#define ARRAY_TO_SLICE(type, array) (type) { .len = sizeof(array) / sizeof(array[0]), .ptr = array }
+    device_info_t* device = (device_info_t*)arg;
 
-#define VALUES(array) (ARRAY_TO_SLICE(cbor_value_slice_t, array))
+    cbor_value_t value = {
+        .type = CBOR_ENCODE_TYPE_PAIRS,
+        .value.pairs = PAIRS((
+            (cbor_pair_t[]){
+                {
+                    {
+                        .type = CBOR_TYPE_TEXT_STRING,
+                        .value.bytes = STR2SLICE("f"),
+                    },
+                    {
+                        .type = CBOR_TYPE_TEXT_STRING,
+                        .value.bytes = device->f,
+                    },
+                },
+                {
+                    {
+                        .type = CBOR_TYPE_TEXT_STRING,
+                        .value.bytes = STR2SLICE("sn"),
+                    },
+                    {
+                        .type = CBOR_TYPE_TEXT_STRING,
+                        .value.bytes = device->sn,
+                    },
+                },
+            }
+        ))
+    };
 
-#define PAIR(first, second) (cbor_pair_t) {.first = (cbor_value_t)(first), .second = (cbor_value_t)(second)}
-#define PAIRS(array) ARRAY_TO_SLICE(cbor_pair_slice_t, array)
+    encode_result_t encoded = encode(value, target);
+
+    if (encoded.is_error) {
+        return ERR(custom_encoder_result_t, encoded.err);
+    }
+
+    return OK(custom_encoder_result_t, encoded.ok);
+
+}
+
+custom_encoder_result_t encode_identification_request(slice_t target, void* arg) {
+    identification_request_t* req = (identification_request_t*)arg;
+    cbor_value_t  value = (cbor_value_t){
+        .type = CBOR_ENCODE_TYPE_PAIRS,
+        .value.pairs = PAIRS((
+            (cbor_pair_t[]){
+                {
+                    {
+                        .type = CBOR_TYPE_TEXT_STRING,
+                        .value.bytes = STR2SLICE("d"),
+                    },
+                    {
+                        .type = CBOR_ENCODE_TYPE_CUSTOM_ENCODER,
+                        .value.custom_encoder = {
+                            .encoder = encode_device_info,
+                            .argument = &req->d
+                        }
+                    }
+                },
+                {
+                    {
+                        .type = CBOR_TYPE_TEXT_STRING,
+                        .value.bytes = STR2SLICE("fn"),
+                    },
+                    {
+                        .type = CBOR_TYPE_INTEGER,
+                        .value.integer = req->fn,
+                    },
+                },
+                {
+                    {
+                        .type = CBOR_TYPE_TEXT_STRING,
+                        .value.bytes = STR2SLICE("rid"),
+                    },
+                    {
+                        .type = CBOR_TYPE_INTEGER,
+                        .value.integer = req->rid,
+                    },
+                },
+            }
+        ))
+    };
+
+    encode_result_t encoded = encode(value, target);
+
+    if (encoded.is_error) {
+        return ERR(custom_encoder_result_t, encoded.err);
+    }
+
+    return OK(custom_encoder_result_t, encoded.ok);
+}
+
 
 int main(void) {
     slice_t cbor = {
@@ -47,65 +120,45 @@ int main(void) {
         .ptr = &buf[0]
     };
 
-    void* stack_before = __builtin_frame_address(0);
-    cbor_value_t array = {
-        .type = CBOR_TYPE_VALUES,
+    identification_request_t request1 = {
+        .d = {
+            .f = BUF2SLICE("XYZ"),
+            .sn = BUF2SLICE("123456789"),
+        },
+        .fn = 42,
+        .rid = 1756887865,
+    };
+
+    identification_request_t request2 = {
+        .d = {
+            .f = BUF2SLICE("XYZ"),
+            .sn = BUF2SLICE("234567890"),
+        },
+        .fn = 12,
+        .rid = 1756887865,
+    };
+
+    encode_result_t res = encode((cbor_value_t) {
+        .type = CBOR_ENCODE_TYPE_VALUES,
         .value.values = VALUES((
             (cbor_value_t[]){
-            {
-                .type = CBOR_TYPE_TEXT_STRING,
-                .value.bytes = BUF2SLICE("hello"),
-            },
-            {
-                .type = CBOR_TYPE_PAIRS,
-                .value.pairs = PAIRS((
-                (cbor_pair_t[]){
-                    {
-                        .first = {
-                            .type = CBOR_TYPE_TEXT_STRING,
-                            .value.bytes = BUF2SLICE("key1"),
-                        },
-                        .second = {
-                            .type = CBOR_TYPE_INTEGER,
-                            .value.integer = 42,
-                        },
-                    },
-                    {
-                        .first = {
-                            .type = CBOR_TYPE_TEXT_STRING,
-                            .value.bytes = BUF2SLICE("key2"),
-                        },
-                        .second = {
-                            .type = CBOR_TYPE_INTEGER,
-                            .value.integer = 84,
-                        },
-                    },
-                }
-                ))
-            },
-            {
-                .type = CBOR_TYPE_VALUES,
-                .value.values = VALUES((
-                    (cbor_value_t[]){
-                    {
-                        .type = CBOR_TYPE_TEXT_STRING,
-                        .value.bytes = BUF2SLICE("world"),
-                    },
-                                    {
-                        .type = CBOR_TYPE_INTEGER,
-                        .value.integer = 1234,
-                    },
+                {
+                    .type = CBOR_ENCODE_TYPE_CUSTOM_ENCODER,
+                    .value.custom_encoder = {
+                        .encoder = encode_identification_request,
+                        .argument = &request1
                     }
-                ))
-            },
+                },
+                {
+                    .type = CBOR_ENCODE_TYPE_CUSTOM_ENCODER,
+                    .value.custom_encoder = {
+                        .encoder = encode_identification_request,
+                        .argument = &request2
+                    }
+                }
             }
-        ))
-    };
-    void* stack_after = __builtin_frame_address(0);
-
-    printf("Stack size: %zd bytes\n", (char*)stack_after - (char*)stack_before);
-
-    encode_result_t res = encode(array, cbor);
+        )),
+    }, cbor);
 
     if (res.is_error) {
         printf("Error: %d\n", res.err);

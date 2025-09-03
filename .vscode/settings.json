@@ -31,6 +31,7 @@
         "span": "c",
         "result.h": "c",
         "stdint.h": "c",
-        "features.h": "c"
+        "features.h": "c",
+        "cbor.h": "c"
     }
 }
