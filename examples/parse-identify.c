@@ -53,7 +53,7 @@ void process_identification_request(const cbor_value_t *key, const cbor_value_t 
     keystr[key->value.bytes.len] = 0;
 
     if (!strcmp(keystr, "d")) {
-        process_map(value->value.map, process_device_info, &request->d);
+        cbor_process_map(value->value.map, process_device_info, &request->d);
     }
     if (!strcmp(keystr, "fn")) {
         request->fn = value->value.integer;
@@ -69,7 +69,7 @@ int main() {
         .ptr = &buf[0]
     };
 
-    parse_result_t res = parse(cbor);
+    cbor_parse_result_t res = cbor_parse(cbor);
     printf("Is Error  : %s\n", res.is_error ? "true" : "false");
     if (res.is_error) {
         printf("Error: %d\n", res.err);
@@ -78,7 +78,7 @@ int main() {
 
     identification_request_t request;
 
-    process_map(res.ok.value.map, process_identification_request, &request);
+    cbor_process_map(res.ok.value.map, process_identification_request, &request);
 
     printf("\nIdentification Request:\n");
     printf("  fn: %d\n", request.fn);

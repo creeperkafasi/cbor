@@ -56,7 +56,7 @@ custom_encoder_result_t encode_device_info(slice_t target, void* arg) {
         ))
     };
 
-    encode_result_t encoded = encode(value, target);
+    cbor_encode_result_t encoded = cbor_encode(value, target);
 
     if (encoded.is_error) {
         return ERR(custom_encoder_result_t, encoded.err);
@@ -109,7 +109,7 @@ custom_encoder_result_t encode_identification_request(slice_t target, void* arg)
         ))
     };
 
-    encode_result_t encoded = encode(value, target);
+    cbor_encode_result_t encoded = cbor_encode(value, target);
 
     if (encoded.is_error) {
         return ERR(custom_encoder_result_t, encoded.err);
@@ -143,7 +143,7 @@ int main(void) {
         .rid = 1756887865,
     };
 
-    encode_result_t res = encode((cbor_value_t) {
+    cbor_encode_result_t res = cbor_encode((cbor_value_t) {
         .type = CBOR_ENCODE_TYPE_VALUES,
         .value.values = VALUES((
             (cbor_value_t[]){

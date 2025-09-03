@@ -205,25 +205,25 @@ typedef struct cbor_pair_s {
 /*--------------------------------------------------------------------------*/
 
 /* Parser Functions */
-cbor_major_type_t get_major_type(const uint8_t* data);
-argument_t get_argument(const uint8_t* data);
-uint64_t argument_to_fixed(argument_t arg);
+cbor_major_type_t cbor_get_major_type(const uint8_t* data);
+argument_t cbor_get_argument(const uint8_t* data);
+uint64_t cbor_argument_to_fixed(argument_t arg);
 
 DEFINE_RESULT_TYPE(cbor_value_t, cbor_parser_error_t);
 FN_RESULT (
     cbor_value_t, cbor_parser_error_t,
-    parse, slice_t buf
+    cbor_parse, slice_t buf
 );
 
 /* Processing Functions */
 typedef void (*pair_processor_function)(const cbor_value_t* key, const cbor_value_t* value, void* process_arg);
 typedef void (*single_processor_function)(const cbor_value_t* value, void* process_arg);
 
-uint8_t* process_array(cbor_array_t array, single_processor_function process_single, void* process_arg);
-uint8_t* process_map(cbor_map_t map, pair_processor_function process_pair, void* process_arg);
+uint8_t* cbor_process_array(cbor_array_t array, single_processor_function process_single, void* process_arg);
+uint8_t* cbor_process_map(cbor_map_t map, pair_processor_function process_pair, void* process_arg);
 
 /* Encoding Functions */
 FN_RESULT(slice_t, cbor_encode_error_t,
-encode, cbor_value_t value, slice_t target);
+cbor_encode, cbor_value_t value, slice_t target);
 
 #endif /*CBOR_H*/

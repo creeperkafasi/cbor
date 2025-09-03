@@ -7,10 +7,10 @@ void print_single(const cbor_value_t* value, void* arg) {
     #ifdef CBOR_DEBUG_REPR
     print_cbor_value(*value, (size_t)arg);
     if (value->type == CBOR_TYPE_MAP) {
-        process_map(value->value.map, print_pair, (void*)((size_t)arg + (size_t)4));
+        cbor_process_map(value->value.map, print_pair, (void*)((size_t)arg + (size_t)4));
     }        
     if (value->type == CBOR_TYPE_ARRAY) {
-        process_array(value->value.array, print_single, (void*)((size_t)arg + (size_t)4));
+        cbor_process_array(value->value.array, print_single, (void*)((size_t)arg + (size_t)4));
     }
     #endif
 }
@@ -21,10 +21,10 @@ void print_pair(const cbor_value_t* key, const cbor_value_t* value, void* arg) {
     print_cbor_value(*key, (size_t)arg);
     print_cbor_value(*value, (size_t)arg);
     if (value->type == CBOR_TYPE_MAP) {
-        process_map(value->value.map, print_pair, (void*)((size_t)arg + (size_t)4));
+        cbor_process_map(value->value.map, print_pair, (void*)((size_t)arg + (size_t)4));
     }
     if (value->type == CBOR_TYPE_ARRAY) {
-        process_array(value->value.array, print_single, (void*)((size_t)arg + (size_t)4));
+        cbor_process_array(value->value.array, print_single, (void*)((size_t)arg + (size_t)4));
     }
     #endif
 }
