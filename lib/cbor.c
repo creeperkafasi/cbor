@@ -119,7 +119,15 @@ FN_RESULT (
         break;
     case CBOR_MAJOR_TYPE_BYTE_STRING:
         value.type = CBOR_TYPE_BYTE_STRING;
-        __attribute__((fallthrough));
+        value.next = buf.ptr + value.argument.size + cbor_argument_to_fixed(value.argument) + 1;
+        if (value.argument.tag == ARGUMENT_NONE) {
+            return ERR(cbor_parse_result_t, PARSER_TODO); // TODO indefinite length
+        }
+        else {
+            value.value.bytes.len = cbor_argument_to_fixed(value.argument);
+            value.value.bytes.ptr = buf.ptr + value.argument.size + 1;
+        }
+        break;
     case CBOR_MAJOR_TYPE_TEXT_STRING:
         value.type = CBOR_TYPE_TEXT_STRING;
         value.next = buf.ptr + value.argument.size + cbor_argument_to_fixed(value.argument) + 1;
@@ -430,7 +438,9 @@ cbor_encode_result_t cbor_encode_string(slice_t string, cbor_type_t type, slice_
 
     write_len_header(string.len, major_type, target);
 
-    memcpy(&target.ptr[header_size], string.ptr, string.len);
+    if (string.len > 0 && string.ptr != NULL) {
+        memcpy(&target.ptr[header_size], string.ptr, string.len);
+    }
 
     target.len = header_size + string.len;
     return OK(cbor_encode_result_t, target);
@@ -499,7 +509,7 @@ cbor_encode_result_t cbor_encode_value_array(cbor_value_slice_t values, slice_t 
     slice_t current = target;
     size_t total_len = 0;
 
-    if (!values.ptr) {
+    if (!values.ptr && values.len > 0) {
         return ERR(cbor_encode_result_t, CBOR_ENCODER_NULL_PTR_ERROR);
     }
 
@@ -536,7 +546,7 @@ cbor_encode_result_t cbor_encode_value_map(cbor_pair_slice_t pairs, slice_t targ
     slice_t current = target;
     size_t total_len = 0;
 
-    if (!pairs.ptr) {
+    if (!pairs.ptr && pairs.len > 0) {
         return ERR(cbor_encode_result_t, CBOR_ENCODER_NULL_PTR_ERROR);
     }
 
