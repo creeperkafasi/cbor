@@ -65,6 +65,10 @@ endif
 # Linker flags
 LDFLAGS = 
 ifeq ($(TARGET),embedded)
+	CFILES += qemu/startup.c qemu/semihosting.c
+	CFLAGS += -DTARGET_EMBEDDED
+	INCLUDES += -Iqemu
+    LDFLAGS += -T qemu/cortex-m3.ld -nostartfiles
     LDFLAGS += -specs=nosys.specs -Wl,--gc-sections
     LDFLAGS += -Wl,-Map=$(BUILD_DIR)/$(@F:.elf=.map)
 endif
@@ -79,6 +83,7 @@ endif
 $(BUILD_DIR):
 	@mkdir -p $@
 	@mkdir -p $(BUILD_DIR)/$(LIB_DIR)
+	@mkdir -p $(BUILD_DIR)/qemu
 	@mkdir -p $(BUILD_DIR)/$(EXAMPLES_DIR)
 
 # Build everything
@@ -95,8 +100,9 @@ $(BUILD_DIR)/%: $(BUILD_DIR)/$(EXAMPLES_DIR)/%.o $(CFILES_OBJ) | dirs
 $(BUILD_DIR)/%.elf: $(BUILD_DIR)/$(EXAMPLES_DIR)/%.o $(CFILES_OBJ) | dirs
 	$(LD) $(CFLAGS) $(LDFLAGS) $^ -o $@
 
-# Pattern rule for compiling C files
+# Pattern rule for compiling C files - FIXED DIRECTORY CREATION
 $(BUILD_DIR)/%.o: %.c | dirs
+	@mkdir -p $(@D)  # This ensures the output directory exists
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # Individual example targets (e.g., 'make parse-identify')

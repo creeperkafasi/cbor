@@ -1,10 +1,15 @@
 #include <stdint.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "cbor.h"
 #include "debug.h"
+
+#ifndef TARGET_EMBEDDED
+#include <stdio.h>
+#else
+#include "semihosting.h"
+#endif
 
 uint8_t buf[512] = {0};
 
@@ -166,6 +171,8 @@ int main(void) {
     }
 
     print_slice_hex(res.ok);
+
+    printf("Sizeof value: %zu\n", sizeof(cbor_value_t));
 
     return 0;
 }

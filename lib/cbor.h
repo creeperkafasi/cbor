@@ -143,6 +143,10 @@ typedef struct {
 /* Main CBOR Value Structure */
 /*--------------------------------------------------------------------------*/
 
+/**
+ * Size on 64-bit systems: 56 bytes
+ * Size on 32-bit systems: 48 bytes
+ */
 typedef struct cbor_value_s {
     cbor_type_t type;
     argument_t argument;

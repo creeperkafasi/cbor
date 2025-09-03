@@ -161,9 +161,29 @@ In terms of performance, i thought about it. There will be a performance cost to
 
 </details>
 
-
-
-
 ## Encoding
 
-🕒 Planned
+🕒 WIP
+
+
+# Building
+
+Run `make` or `make TARGET=native` to build everything for linux.
+
+Run `make TARGET=embedded` to build for Arm Cortex M3
+
+Run `make help` for help
+
+Run `make clean` to clean all the build artifacts
+
+Build artifacts are generated in the `build/TARGET`
+
+## Running the arm build on QEMU
+
+You can use this command to run `build/embedded/main.elf` in QEMU
+
+```sh
+qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/main.elf
+```
+
+> Note: According to Deepseek, the lm3s6965evb is the most similar QEMU machine to a CC2538. That's why I used it.

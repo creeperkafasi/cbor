@@ -4,6 +4,12 @@
 #include "cbor.h"
 #include <inttypes.h>
 
+#ifndef TARGET_EMBEDDED
+#include <stdio.h>
+#else
+#include "semihosting.h"
+#endif
+
 void print_cbor_value(cbor_value_t value, int indent);
 void print_cbor_type(cbor_major_type_t type);
 
@@ -16,7 +22,11 @@ static inline void print_slice_hex(slice_t slice) {
             if (i * 8 + j >= slice.len) break;
             printf("%02X ", slice.ptr[i * 8 + j]);
         }
+        #ifdef TARGET_EMBEDDED
+        printf("\n\r");
+        #else
         printf("\n");
+        #endif
     }
 }
 
