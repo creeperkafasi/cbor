@@ -55,6 +55,9 @@ ifeq ($(TARGET),native)
 else ifeq ($(TARGET),embedded)
     CFLAGS += -mcpu=cortex-m3 -mthumb -mfloat-abi=soft
     CFLAGS += -ffunction-sections -fdata-sections
+    # Aggressive optimization for Contiki-NG stack usage compatibility
+    CFLAGS += -finline-functions -finline-small-functions
+    CFLAGS += -fomit-frame-pointer -foptimize-sibling-calls
 endif
 
 # Compiler-specific flags
