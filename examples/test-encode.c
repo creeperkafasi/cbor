@@ -6,6 +6,7 @@
 #include <assert.h>
 #include "cbor.h"
 #include "debug.h"
+#include "memory_profiler.h"
 
 // Test result tracking
 static int tests_passed = 0;
@@ -35,16 +36,20 @@ int compare_bytes(const uint8_t* actual, const uint8_t* expected, size_t len) {
 
 // Test 1: Basic integer encoding
 void test_integer_encoding() {
+    MEMORY_PROFILE_FUNCTION_ENTER("test_integer_encoding");
     printf("\n=== Testing Integer Encoding ===\n");
     
     uint8_t buffer[64];
     slice_t target = {.len = sizeof(buffer), .ptr = buffer};
+    MEMORY_PROFILE_BUFFER("encode_buffer", sizeof(buffer));
+    MEMORY_PROFILE_CBOR_STRUCTURE("slice_t", &target);
     
     // Test small positive integer (0-23)
     cbor_value_t small_int = {
         .type = CBOR_TYPE_INTEGER,
         .value.integer = 5
     };
+    MEMORY_PROFILE_CBOR_STRUCTURE("cbor_value_t", &small_int);
     
     cbor_encode_result_t result = cbor_encode(small_int, target);
     TEST_ASSERT(!result.is_error, "Small integer should encode without error");
@@ -711,6 +716,11 @@ void test_ultra_extreme_cases() {
 }
 
 int main() {
+    MEMORY_PROFILE_FUNCTION_ENTER("main");
+    
+    // Initialize memory profiling
+    memory_profile_init();
+    
     printf("CBOR Library - Encoding Test Suite\n");
     printf("===================================\n");
     
@@ -741,5 +751,9 @@ int main() {
     printf("Tests passed: %d\n", tests_passed);
     printf("Tests failed: %d\n", tests_failed);
     
+    // Generate memory report
+    MEMORY_PROFILE_REPORT();
+    
+    MEMORY_PROFILE_FUNCTION_EXIT();
     return tests_failed > 0 ? 1 : 0;
 }

@@ -21,7 +21,7 @@ LIB_DIR = lib
 EXAMPLES_DIR = examples
 
 # Library files
-CFILES = $(LIB_DIR)/cbor.c $(LIB_DIR)/debug.c
+CFILES = $(LIB_DIR)/cbor.c $(LIB_DIR)/debug.c $(LIB_DIR)/memory_profiler.c
 CFILES_OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(CFILES))
 
 # Main application

@@ -5,6 +5,7 @@
 #include <string.h>
 #include "cbor.h"
 #include "debug.h"
+#include "memory_profiler.h"
 
 #include "identify.h"
 
@@ -88,19 +89,29 @@ void process_identification_request(const cbor_value_t *key, const cbor_value_t 
 }
 
 int main() {
+    MEMORY_PROFILE_FUNCTION_ENTER("main");
+    
+    // Initialize memory profiling
+    memory_profile_init();
+    
     slice_t cbor = {
         .len = sizeof(buf),
         .ptr = &buf[0]
     };
+    MEMORY_PROFILE_BUFFER("identify_cbor_data", sizeof(buf));
+    MEMORY_PROFILE_CBOR_STRUCTURE("slice_t", &cbor);
 
     cbor_parse_result_t res = cbor_parse(cbor);
+    MEMORY_PROFILE_CBOR_STRUCTURE("cbor_value_t", &res.ok);
     printf("Is Error  : %s\n", res.is_error ? "true" : "false");
     if (res.is_error) {
         printf("Error: %d\n", res.err);
+        MEMORY_PROFILE_FUNCTION_EXIT();
         return 1;
     }
 
     identification_request_t request;
+    MEMORY_PROFILE_CBOR_STRUCTURE("identification_request_t", &request);
 
     cbor_process_map(res.ok.value.map, process_identification_request, &request);
 
@@ -153,4 +164,8 @@ int main() {
     IDENTIFY_PARAMETERS
     #undef X
 
+    // Generate memory report
+    MEMORY_PROFILE_REPORT();
+    
+    MEMORY_PROFILE_FUNCTION_EXIT();
 }

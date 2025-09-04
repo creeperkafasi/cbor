@@ -6,6 +6,7 @@
 #include <assert.h>
 #include "cbor.h"
 #include "debug.h"
+#include "memory_profiler.h"
 
 // Test result tracking
 static int tests_passed = 0;
@@ -292,6 +293,11 @@ void test_indefinite_byte_string_parsing() {
 }
 
 int main() {
+    MEMORY_PROFILE_FUNCTION_ENTER("main");
+    
+    // Initialize memory profiling
+    memory_profile_init();
+    
     printf("Testing Indefinite Length CBOR Support\n");
     printf("=====================================\n");
     
@@ -308,6 +314,11 @@ int main() {
     printf("\n=== Test Results ===\n");
     printf("Tests passed: %d\n", tests_passed);
     printf("Tests failed: %d\n", tests_failed);
+    
+    // Generate memory report
+    MEMORY_PROFILE_REPORT();
+    
+    MEMORY_PROFILE_FUNCTION_EXIT();
     
     if (tests_failed == 0) {
         printf("🎉 All tests passed!\n");

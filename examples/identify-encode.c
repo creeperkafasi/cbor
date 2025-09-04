@@ -5,6 +5,7 @@
 #include <string.h>
 #include "cbor.h"
 #include "debug.h"
+#include "memory_profiler.h"
 
 #include "identify.h"
 
@@ -412,10 +413,17 @@ custom_encoder_result_t encode_identification_request(slice_t target, void* arg)
 
 
 int main(void) {
+    MEMORY_PROFILE_FUNCTION_ENTER("main");
+    
+    // Initialize memory profiling
+    memory_profile_init();
+    
     slice_t cbor = {
         .len = sizeof(buf),
         .ptr = &buf[0]
     };
+    MEMORY_PROFILE_BUFFER("encode_buffer", sizeof(buf));
+    MEMORY_PROFILE_CBOR_STRUCTURE("slice_t", &cbor);
 
     identification_request_t request = {
         .d = {
@@ -428,6 +436,7 @@ int main(void) {
             | IDENTIFY_MASK_BRAND
             | IDENTIFY_MASK_MODEL
     };
+    MEMORY_PROFILE_CBOR_STRUCTURE("identification_request_t", &request);
 
 
     cbor_encode_result_t res = cbor_encode((cbor_value_t) {
@@ -447,10 +456,15 @@ int main(void) {
 
     if (res.is_error) {
         printf("Error: %d\n", res.err);
+        MEMORY_PROFILE_FUNCTION_EXIT();
         return res.err;
     }
 
     print_slice_hex(res.ok);
 
+    // Generate memory report
+    MEMORY_PROFILE_REPORT();
+    
+    MEMORY_PROFILE_FUNCTION_EXIT();
     return 0;
 }

@@ -6,6 +6,7 @@
 #include <assert.h>
 #include "cbor.h"
 #include "debug.h"
+#include "memory_profiler.h"
 
 // Test result tracking
 static int tests_passed = 0;
@@ -39,13 +40,17 @@ void count_pairs(const cbor_value_t* key, const cbor_value_t* value, void* arg) 
 
 // Test 1: Basic integer parsing
 void test_integer_parsing() {
+    MEMORY_PROFILE_FUNCTION_ENTER("test_integer_parsing");
     printf("\n=== Testing Integer Parsing ===\n");
     
     // Test positive small integer (0-23 range)
     uint8_t small_int[] = {0x05}; // Integer 5
     slice_t buf = {.len = sizeof(small_int), .ptr = small_int};
+    MEMORY_PROFILE_BUFFER("small_int", sizeof(small_int));
+    MEMORY_PROFILE_CBOR_STRUCTURE("slice_t", &buf);
     
     cbor_parse_result_t result = cbor_parse(buf);
+    MEMORY_PROFILE_CBOR_STRUCTURE("cbor_value_t", &result.ok);
     TEST_ASSERT(!result.is_error, "Small integer should parse without error");
     TEST_ASSERT(result.ok.type == CBOR_TYPE_INTEGER, "Should be integer type");
     TEST_ASSERT(result.ok.value.integer == 5, "Should parse value 5");
@@ -53,29 +58,41 @@ void test_integer_parsing() {
     // Test larger positive integer (24-255 range)
     uint8_t medium_int[] = {0x18, 0x64}; // Integer 100
     buf = (slice_t){.len = sizeof(medium_int), .ptr = medium_int};
+    MEMORY_PROFILE_BUFFER("medium_int", sizeof(medium_int));
+    MEMORY_PROFILE_CBOR_STRUCTURE("slice_t", &buf);
     
     result = cbor_parse(buf);
+    MEMORY_PROFILE_CBOR_STRUCTURE("cbor_value_t", &result.ok);
     TEST_ASSERT(!result.is_error, "Medium integer should parse without error");
     TEST_ASSERT(result.ok.value.integer == 100, "Should parse value 100");
     
     // Test negative integer
     uint8_t neg_int[] = {0x20}; // Integer -1
     buf = (slice_t){.len = sizeof(neg_int), .ptr = neg_int};
+    MEMORY_PROFILE_BUFFER("neg_int", sizeof(neg_int));
+    MEMORY_PROFILE_CBOR_STRUCTURE("slice_t", &buf);
     
     result = cbor_parse(buf);
+    MEMORY_PROFILE_CBOR_STRUCTURE("cbor_value_t", &result.ok);
     TEST_ASSERT(!result.is_error, "Negative integer should parse without error");
     TEST_ASSERT(result.ok.value.integer == -1, "Should parse value -1");
+    
+    MEMORY_PROFILE_FUNCTION_EXIT();
 }
 
 // Test 2: String parsing
 void test_string_parsing() {
+    MEMORY_PROFILE_FUNCTION_ENTER("test_string_parsing");
     printf("\n=== Testing String Parsing ===\n");
     
     // Test text string
     uint8_t text_str[] = {0x65, 'h', 'e', 'l', 'l', 'o'}; // "hello"
     slice_t buf = {.len = sizeof(text_str), .ptr = text_str};
+    MEMORY_PROFILE_BUFFER("text_str", sizeof(text_str));
+    MEMORY_PROFILE_CBOR_STRUCTURE("slice_t", &buf);
     
     cbor_parse_result_t result = cbor_parse(buf);
+    MEMORY_PROFILE_CBOR_STRUCTURE("cbor_value_t", &result.ok);
     TEST_ASSERT(!result.is_error, "Text string should parse without error");
     TEST_ASSERT(result.ok.type == CBOR_TYPE_TEXT_STRING, "Should be text string type");
     TEST_ASSERT(result.ok.value.bytes.len == 5, "String length should be 5");
@@ -84,8 +101,11 @@ void test_string_parsing() {
     // Test byte string
     uint8_t byte_str[] = {0x44, 0x01, 0x02, 0x03, 0x04}; // 4 bytes: [1,2,3,4]
     buf = (slice_t){.len = sizeof(byte_str), .ptr = byte_str};
+    MEMORY_PROFILE_BUFFER("byte_str", sizeof(byte_str));
+    MEMORY_PROFILE_CBOR_STRUCTURE("slice_t", &buf);
     
     result = cbor_parse(buf);
+    MEMORY_PROFILE_CBOR_STRUCTURE("cbor_value_t", &result.ok);
     TEST_ASSERT(!result.is_error, "Byte string should parse without error");
     TEST_ASSERT(result.ok.type == CBOR_TYPE_BYTE_STRING, "Should be byte string type");
     TEST_ASSERT(result.ok.value.bytes.len == 4, "Byte string length should be 4");
@@ -93,14 +113,20 @@ void test_string_parsing() {
     // Test empty string
     uint8_t empty_str[] = {0x60}; // Empty text string
     buf = (slice_t){.len = sizeof(empty_str), .ptr = empty_str};
+    MEMORY_PROFILE_BUFFER("empty_str", sizeof(empty_str));
+    MEMORY_PROFILE_CBOR_STRUCTURE("slice_t", &buf);
     
     result = cbor_parse(buf);
+    MEMORY_PROFILE_CBOR_STRUCTURE("cbor_value_t", &result.ok);
     TEST_ASSERT(!result.is_error, "Empty string should parse without error");
     TEST_ASSERT(result.ok.value.bytes.len == 0, "Empty string length should be 0");
+    
+    MEMORY_PROFILE_FUNCTION_EXIT();
 }
 
 // Test 3: Simple values and floats
 void test_simple_values() {
+    MEMORY_PROFILE_FUNCTION_ENTER("test_simple_values");
     printf("\n=== Testing Simple Values ===\n");
     
     // Test false
@@ -135,23 +161,29 @@ void test_simple_values() {
     result = cbor_parse(buf);
     TEST_ASSERT(!result.is_error, "Undefined value should parse without error");
     TEST_ASSERT(result.ok.value.simple == CBOR_SIMPLE_UNDEFINED, "Should be undefined value");
+    
+    MEMORY_PROFILE_FUNCTION_EXIT();
 }
 
 // Test 4: Array parsing
 void test_array_parsing() {
+    MEMORY_PROFILE_FUNCTION_ENTER("test_array_parsing");
     printf("\n=== Testing Array Parsing ===\n");
     
     // Test empty array
     uint8_t empty_array[] = {0x80}; // Array of length 0
     slice_t buf = {.len = sizeof(empty_array), .ptr = empty_array};
+    MEMORY_PROFILE_BUFFER("empty_array", sizeof(empty_array));
     
     cbor_parse_result_t result = cbor_parse(buf);
+    MEMORY_PROFILE_CBOR_STRUCTURE("cbor_value_t", &result.ok);
     TEST_ASSERT(!result.is_error, "Empty array should parse without error");
     TEST_ASSERT(result.ok.type == CBOR_TYPE_ARRAY, "Should be array type");
     TEST_ASSERT(result.ok.value.array.length == 0, "Array length should be 0");
     
     // Test simple array [1, 2, 3]
     uint8_t simple_array[] = {0x83, 0x01, 0x02, 0x03}; // Array with 3 elements: 1, 2, 3
+    MEMORY_PROFILE_BUFFER("simple_array", sizeof(simple_array));
     buf = (slice_t){.len = sizeof(simple_array), .ptr = simple_array};
     
     result = cbor_parse(buf);
@@ -165,17 +197,22 @@ void test_array_parsing() {
     uint8_t* end_ptr = cbor_process_array(result.ok.value.array, count_elements, NULL);
     TEST_ASSERT(end_ptr != NULL, "Array processing should succeed");
     TEST_ASSERT(element_count == 3, "Should process 3 elements");
+    
+    MEMORY_PROFILE_FUNCTION_EXIT();
 }
 
 // Test 5: Map parsing
 void test_map_parsing() {
+    MEMORY_PROFILE_FUNCTION_ENTER("test_map_parsing");
     printf("\n=== Testing Map Parsing ===\n");
     
     // Test empty map
     uint8_t empty_map[] = {0xA0}; // Map of length 0
     slice_t buf = {.len = sizeof(empty_map), .ptr = empty_map};
+    MEMORY_PROFILE_BUFFER("empty_map", sizeof(empty_map));
     
     cbor_parse_result_t result = cbor_parse(buf);
+    MEMORY_PROFILE_CBOR_STRUCTURE("cbor_value_t", &result.ok);
     TEST_ASSERT(!result.is_error, "Empty map should parse without error");
     TEST_ASSERT(result.ok.type == CBOR_TYPE_MAP, "Should be map type");
     TEST_ASSERT(result.ok.value.map.length == 0, "Map length should be 0");
@@ -195,9 +232,16 @@ void test_map_parsing() {
     uint8_t* end_ptr = cbor_process_map(result.ok.value.map, count_pairs, NULL);
     TEST_ASSERT(end_ptr != NULL, "Map processing should succeed");
     TEST_ASSERT(pair_count == 1, "Should process 1 pair");
+    
+    MEMORY_PROFILE_FUNCTION_EXIT();
 }
 
 int main() {
+    MEMORY_PROFILE_FUNCTION_ENTER("main");
+    
+    // Initialize memory profiling
+    memory_profile_init();
+    
     printf("CBOR Library - Parsing Test Suite\n");
     printf("==================================\n");
     
@@ -211,5 +255,9 @@ int main() {
     printf("Tests passed: %d\n", tests_passed);
     printf("Tests failed: %d\n", tests_failed);
     
+    // Generate memory report
+    MEMORY_PROFILE_REPORT();
+    
+    MEMORY_PROFILE_FUNCTION_EXIT();
     return tests_failed > 0 ? 1 : 0;
 }
