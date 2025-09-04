@@ -18,6 +18,18 @@ Safe CBOR library written in C
 | Floats        |✅Supported|✅Supported|
 | Tags          |⛔Not Supported|⛔Not Supported|
 
+## Memory Profiling
+
+This library includes comprehensive memory profiling capabilities for analyzing memory usage patterns across different target platforms.
+
+### Key Memory Characteristics
+
+- **32-bit ARM Cortex-M3**: Peak stack usage ~168 bytes, `cbor_value_t` = 48 bytes
+- **64-bit Native**: Peak stack usage ~1,280 bytes, `cbor_value_t` = 56 bytes  
+- **Memory Efficiency**: 32-bit embedded targets show 58.7% memory savings vs 64-bit
+
+See [MEMORY_REPORT.md](MEMORY_REPORT.md) for detailed analysis and optimization recommendations.
+
 ## Parsing
 
 ### Basic Parsing
