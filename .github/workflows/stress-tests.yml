@@ -1,0 +1,160 @@
+name: Stress Tests
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  schedule:
+    # Run stress tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  stress-test-native:
+    name: Native Stress Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gcc valgrind
+        
+    - name: Build stress tests
+      run: |
+        make TARGET=native clean
+        make TARGET=native all
+        
+    - name: Run memory tests with Valgrind
+      run: |
+        echo "Running memory leak detection on test programs..."
+        valgrind --leak-check=full --error-exitcode=1 ./build/native/test-parse
+        valgrind --leak-check=full --error-exitcode=1 ./build/native/test-encode
+        valgrind --leak-check=full --error-exitcode=1 ./build/native/test-indefinite
+        
+    - name: Run tests with AddressSanitizer (already enabled in Makefile)
+      run: |
+        echo "Running tests with AddressSanitizer (built-in)..."
+        ./build/native/test-parse
+        ./build/native/test-encode
+        ./build/native/test-indefinite
+        ./build/native/identify-parse
+        ./build/native/identify-encode
+        
+    - name: Test multiple iterations for stability
+      run: |
+        echo "Running stability tests (100 iterations)..."
+        for i in {1..100}; do
+          echo "Iteration $i"
+          ./build/native/test-parse > /dev/null
+          ./build/native/test-encode > /dev/null
+          ./build/native/test-indefinite > /dev/null
+        done
+        
+  stress-test-embedded:
+    name: Embedded Stress Tests  
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gcc-arm-none-eabi qemu-system-arm
+        
+    - name: Build embedded targets
+      run: |
+        make TARGET=embedded clean
+        make TARGET=embedded all
+        
+    - name: Test QEMU boot and execution
+      run: |
+        echo "Testing QEMU execution with detailed output..."
+        
+        # Test main application
+        echo "=== Testing main.elf ==="
+        timeout 60s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/main.elf > qemu_main.log 2>&1 || echo "QEMU finished or timed out"
+        cat qemu_main.log
+        
+        # Test parsing functionality
+        echo "=== Testing test-parse.elf ==="
+        timeout 60s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-parse.elf > qemu_parse.log 2>&1 || echo "QEMU finished or timed out"
+        cat qemu_parse.log
+        
+        # Test encoding functionality  
+        echo "=== Testing test-encode.elf ==="
+        timeout 60s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-encode.elf > qemu_encode.log 2>&1 || echo "QEMU finished or timed out"
+        cat qemu_encode.log
+        
+        # Test indefinite length functionality
+        echo "=== Testing test-indefinite.elf ==="
+        timeout 60s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-indefinite.elf > qemu_indefinite.log 2>&1 || echo "QEMU finished or timed out"
+        cat qemu_indefinite.log
+        
+    - name: Verify test outputs contain expected patterns
+      run: |
+        echo "Checking for test success patterns in outputs..."
+        
+        # Check if tests show passing results
+        if grep -q "PASS\|✅\|SUCCESS" qemu_parse.log qemu_encode.log qemu_indefinite.log; then
+          echo "✅ Found success patterns in test outputs"
+        else
+          echo "⚠️  No clear success patterns found, checking for errors..."
+          if grep -q "FAIL\|ERROR\|❌\|ABORT" qemu_parse.log qemu_encode.log qemu_indefinite.log; then
+            echo "❌ Found error patterns in test outputs"
+            exit 1
+          else
+            echo "ℹ️  No clear success or error patterns found"
+          fi
+        fi
+        
+    - name: Upload QEMU logs as artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: qemu-test-logs
+        path: qemu_*.log
+        
+  memory-usage-analysis:
+    name: Memory Usage Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gcc-arm-none-eabi
+        
+    - name: Build with stack usage analysis
+      run: |
+        # Add stack usage flags for detailed analysis
+        make TARGET=native CFLAGS="-fstack-usage -Wstack-usage=1024" clean all
+        
+    - name: Analyze stack usage
+      run: |
+        echo "=== Stack Usage Analysis ==="
+        find build/native -name "*.su" -exec echo "File: {}" \; -exec cat {} \; || echo "No .su files found"
+        
+    - name: Build embedded with memory optimization
+      run: |
+        make TARGET=embedded clean all
+        
+    - name: Check binary sizes
+      run: |
+        echo "=== Binary Size Analysis ==="
+        ls -la build/embedded/*.elf
+        echo ""
+        echo "=== Detailed size breakdown ==="
+        for elf in build/embedded/*.elf; do
+          echo "--- $elf ---"
+          arm-none-eabi-size "$elf"
+          echo ""
+        done

@@ -1,0 +1,126 @@
+name: Documentation and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+
+jobs:
+  build-release:
+    name: Build Release Artifacts
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gcc gcc-arm-none-eabi
+        
+    - name: Build native release
+      run: |
+        make TARGET=native clean
+        make TARGET=native all
+        
+    - name: Build embedded release
+      run: |
+        make TARGET=embedded clean  
+        make TARGET=embedded all
+        
+    - name: Create release archive
+      run: |
+        # Create release directory structure
+        mkdir -p release/cbor-${{ github.ref_name }}
+        
+        # Copy source files
+        cp -r lib/ release/cbor-${{ github.ref_name }}/
+        cp -r examples/ release/cbor-${{ github.ref_name }}/
+        cp -r qemu/ release/cbor-${{ github.ref_name }}/
+        cp Makefile README.md release/cbor-${{ github.ref_name }}/
+        
+        # Copy built binaries
+        cp -r build/ release/cbor-${{ github.ref_name }}/
+        
+        # Create archives
+        cd release
+        tar -czf cbor-${{ github.ref_name }}.tar.gz cbor-${{ github.ref_name }}/
+        zip -r cbor-${{ github.ref_name }}.zip cbor-${{ github.ref_name }}/
+        
+    - name: Generate checksums
+      run: |
+        cd release
+        sha256sum *.tar.gz *.zip > checksums.sha256
+        
+    - name: Upload release artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-artifacts
+        path: release/
+        
+  validate-documentation:
+    name: Validate Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check README completeness
+      run: |
+        echo "Checking README.md for completeness..."
+        
+        # Check for required sections
+        required_sections=("Features" "Parsing" "Encoding" "Building")
+        
+        for section in "${required_sections[@]}"; do
+          if grep -q "# $section\|## $section" README.md; then
+            echo "✅ Found section: $section"
+          else
+            echo "❌ Missing section: $section"
+            exit 1
+          fi
+        done
+        
+    - name: Validate code examples in README
+      run: |
+        echo "Extracting and validating C code examples from README..."
+        
+        # Extract C code blocks and create temporary files for syntax checking
+        awk '/```c$/,/```$/ {if ($0 != "```c" && $0 != "```") print}' README.md > temp_code.c
+        
+        if [ -s temp_code.c ]; then
+          echo "Found C code examples, checking syntax..."
+          # Add necessary includes for syntax check
+          echo "#include <stdint.h>" > syntax_check.c
+          echo "#include <stddef.h>" >> syntax_check.c
+          echo "#include <stdio.h>" >> syntax_check.c
+          echo "#include <string.h>" >> syntax_check.c
+          echo "#include \"lib/cbor.h\"" >> syntax_check.c
+          cat temp_code.c >> syntax_check.c
+          
+          # Check syntax (don't link, just compile)
+          if gcc -c -I. -Ilib syntax_check.c -o /dev/null 2>/dev/null; then
+            echo "✅ C code examples have valid syntax"
+          else
+            echo "⚠️  C code examples may have syntax issues"
+            gcc -c -I. -Ilib syntax_check.c -o /dev/null || true
+          fi
+        else
+          echo "ℹ️  No C code examples found to validate"
+        fi
+        
+        # Cleanup
+        rm -f temp_code.c syntax_check.c
+        
+    - name: Check for TODO items
+      run: |
+        echo "Checking for TODO items in code..."
+        if grep -r "TODO\|FIXME\|XXX" lib/ examples/ || true; then
+          echo "ℹ️  Found TODO items in code"
+        else
+          echo "✅ No TODO items found"
+        fi

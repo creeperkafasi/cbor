@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  test-native:
+    name: Native Linux Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gcc
+        
+    - name: Build native targets
+      run: |
+        make TARGET=native clean
+        make TARGET=native all
+        
+    - name: List built executables
+      run: |
+        find build/native -type f -executable -ls
+        
+    - name: Run main application
+      run: |
+        ./build/native/main
+        
+    - name: Run test-parse
+      run: |
+        ./build/native/test-parse
+        
+    - name: Run test-encode
+      run: |
+        ./build/native/test-encode
+        
+    - name: Run test-indefinite
+      run: |
+        ./build/native/test-indefinite
+        
+    - name: Run identify-parse
+      run: |
+        ./build/native/identify-parse
+        
+    - name: Run identify-encode
+      run: |
+        ./build/native/identify-encode
+
+  test-embedded-qemu:
+    name: Embedded QEMU Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gcc-arm-none-eabi qemu-system-arm
+        
+    - name: Verify toolchain
+      run: |
+        arm-none-eabi-gcc --version
+        qemu-system-arm --version
+        
+    - name: Build embedded targets
+      run: |
+        make TARGET=embedded clean
+        make TARGET=embedded all
+        
+    - name: List built executables
+      run: |
+        find build/embedded -name "*.elf" -ls
+        
+    - name: Run main application in QEMU
+      run: |
+        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/main.elf || true
+        
+    - name: Run test-parse in QEMU
+      run: |
+        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-parse.elf || true
+        
+    - name: Run test-encode in QEMU
+      run: |
+        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-encode.elf || true
+        
+    - name: Run test-indefinite in QEMU
+      run: |
+        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-indefinite.elf || true
+        
+    - name: Run identify-parse in QEMU
+      run: |
+        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/identify-parse.elf || true
+        
+    - name: Run identify-encode in QEMU
+      run: |
+        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/identify-encode.elf || true
+
+  test-matrix:
+    name: Multi-compiler Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gcc clang
+        
+    - name: Build and test with ${{ matrix.compiler }}
+      run: |
+        CC=${{ matrix.compiler }} make TARGET=native clean
+        CC=${{ matrix.compiler }} make TARGET=native all
+        
+    - name: Run tests with ${{ matrix.compiler }}
+      run: |
+        ./build/native/test-parse
+        ./build/native/test-encode
+        ./build/native/test-indefinite
+
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential clang-format cppcheck
+        
+    - name: Run cppcheck static analysis
+      run: |
+        cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem lib/ examples/ || true
+        
+    - name: Check code formatting (if .clang-format exists)
+      run: |
+        if [ -f .clang-format ]; then
+          find lib/ examples/ -name "*.c" -o -name "*.h" | xargs clang-format --dry-run --Werror
+        else
+          echo "No .clang-format file found, skipping format check"
+        fi

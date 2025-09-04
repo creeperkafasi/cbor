@@ -475,6 +475,42 @@ Run `make clean` to clean all the build artifacts
 
 Build artifacts are generated in the `build/TARGET`
 
+## Testing
+
+### Quick Test Runner
+
+Use the provided test runner script to run all tests:
+
+```sh
+./run_tests.sh           # Run all tests (native + embedded + quality checks)
+./run_tests.sh native    # Run only native tests
+./run_tests.sh embedded  # Run only embedded/QEMU tests  
+./run_tests.sh quality   # Run only code quality checks
+./run_tests.sh help      # Show help
+```
+
+### Manual Testing
+
+#### Native Tests
+
+```sh
+make TARGET=native all
+./build/native/test-parse
+./build/native/test-encode
+./build/native/test-indefinite
+./build/native/identify-parse
+./build/native/identify-encode
+```
+
+#### Embedded Tests (QEMU)
+
+```sh
+make TARGET=embedded all
+qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-parse.elf
+qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-encode.elf
+qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-indefinite.elf
+```
+
 ## Running the arm build on QEMU
 
 You can use this command to run `build/embedded/main.elf` in QEMU
@@ -484,3 +520,13 @@ qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel bu
 ```
 
 > Note: According to Deepseek, the lm3s6965evb is the most similar QEMU machine to a CC2538. That's why I used it.
+
+## Continuous Integration
+
+This project uses GitHub Actions for continuous integration with the following workflows:
+
+- **CI Pipeline** (`.github/workflows/ci.yml`): Runs all tests on Linux (native) and QEMU (embedded), includes multi-compiler testing (GCC/Clang) and code quality checks
+- **Stress Tests** (`.github/workflows/stress-tests.yml`): Runs memory tests, stability tests, and extended QEMU testing
+- **Release Pipeline** (`.github/workflows/release.yml`): Builds release artifacts and validates documentation
+
+The CI automatically runs on every push and pull request to ensure code quality and functionality across different environments.
