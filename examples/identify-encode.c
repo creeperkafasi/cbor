@@ -6,18 +6,9 @@
 #include "cbor.h"
 #include "debug.h"
 
+#include "identify.h"
+
 uint8_t buf[512] = {0};
-
-typedef struct {
-    slice_t f;
-    slice_t sn;
-} device_info_t;
-
-typedef struct {
-    device_info_t d;
-    int fn;
-    int64_t rid;
-} identification_request_t;
 
 custom_encoder_result_t encode_device_info(slice_t target, void* arg) {
 

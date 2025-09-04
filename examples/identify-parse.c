@@ -6,33 +6,24 @@
 #include "cbor.h"
 #include "debug.h"
 
+#include "identify.h"
+
 uint8_t buf[] = {
-0xA3, 0x61, 0x64, 0xA2, 0x61, 0x66, 0x63, 0x58,
+0xA4, 0x61, 0x64, 0xA2, 0x61, 0x66, 0x63, 0x58,
 0x59, 0x5A, 0x62, 0x73, 0x6E, 0x6F, 0x30, 0x31,
 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
 0x41, 0x42, 0x43, 0x44, 0x45, 0x62, 0x66, 0x6E,
-0x02, 0x63, 0x72, 0x69, 0x64, 0x78, 0x24, 0x33,
-0x64, 0x30, 0x62, 0x32, 0x34, 0x32, 0x65, 0x2D,
-0x31, 0x38, 0x36, 0x36, 0x2D, 0x34, 0x61, 0x34,
-0x31, 0x2D, 0x61, 0x38, 0x63, 0x61, 0x2D, 0x31,
-0x33, 0x37, 0x32, 0x66, 0x31, 0x62, 0x33, 0x34,
-0x61, 0x62, 0x37,
+0x02, 0x63, 0x72, 0x69, 0x64, 0x1A, 0x68, 0xB9,
+0x5A, 0xA7, 0x61, 0x72, 0xA1, 0x6A, 0x70, 0x61,
+0x72, 0x61, 0x6D, 0x65, 0x74, 0x65, 0x72, 0x73,
+0x83, 0x63, 0x72, 0x64, 0x73, 0x62, 0x66, 0x77,
+0x63, 0x6D, 0x65, 0x73,
 };
-
-typedef struct {
-    slice_t f;
-    slice_t sn; 
-} device_info_t;
-
-typedef struct {
-    device_info_t d;
-    int fn;
-    slice_t rid;
-} identification_request_t;
 
 void process_device_info(const cbor_value_t *key, const cbor_value_t *value, void *arg) {
     device_info_t* device = arg;
 
+    if (key->type != CBOR_TYPE_TEXT_STRING) return;
     char keystr[key->value.bytes.len + 1];
     memcpy(keystr, key->value.bytes.ptr, key->value.bytes.len);
     keystr[key->value.bytes.len] = 0;
@@ -45,9 +36,39 @@ void process_device_info(const cbor_value_t *key, const cbor_value_t *value, voi
     }
 }
 
+
+void process_identify_parameters(const cbor_value_t *element, void *process_arg) {
+    identify_bitmap_t* bitmap = process_arg;
+
+    if (element->type != CBOR_TYPE_TEXT_STRING) return;
+    char keystr[element->value.bytes.len + 1];
+    memcpy(keystr, element->value.bytes.ptr, element->value.bytes.len);
+    keystr[element->value.bytes.len] = 0;
+
+    #define X(name, key) if (!strcmp(keystr, key)) { \
+    printf("%s\n", keystr); *bitmap |= IDENTIFY_MASK_ ## name; }
+    IDENTIFY_PARAMETERS
+    #undef X
+}
+
+void process_identify_parameters_container(const cbor_value_t *key, const cbor_value_t *value, void *arg) {
+    identify_bitmap_t* bitmap = arg;
+
+    if (key->type != CBOR_TYPE_TEXT_STRING) return;
+    char keystr[key->value.bytes.len + 1];
+    memcpy(keystr, key->value.bytes.ptr, key->value.bytes.len);
+    keystr[key->value.bytes.len] = 0;
+
+    if (!strcmp(keystr, "parameters")) {
+        memset(bitmap, 0, sizeof(identify_bitmap_t));
+        cbor_process_array(value->value.array, process_identify_parameters, bitmap);
+    }
+}
+
 void process_identification_request(const cbor_value_t *key, const cbor_value_t *value, void *arg) {
     identification_request_t* request = arg;
 
+    if (key->type != CBOR_TYPE_TEXT_STRING) return;
     char keystr[key->value.bytes.len + 1];
     memcpy(keystr, key->value.bytes.ptr, key->value.bytes.len);
     keystr[key->value.bytes.len] = 0;
@@ -59,7 +80,10 @@ void process_identification_request(const cbor_value_t *key, const cbor_value_t 
         request->fn = value->value.integer;
     }
     if (!strcmp(keystr, "rid")) {
-        request->rid = value->value.bytes;
+        request->rid = value->value.integer;
+    }
+    if (!strcmp(keystr, "r")) {
+        cbor_process_map(value->value.map, process_identify_parameters_container, &request->request_bitmap);
     }
 }
 
@@ -81,14 +105,6 @@ int main() {
     cbor_process_map(res.ok.value.map, process_identification_request, &request);
 
     printf("\nIdentification Request:\n");
-    printf("  fn: %d\n", request.fn);
-
-    /* rid */
-    printf("  rid (%zu bytes): ", request.rid.len);
-    for (size_t i = 0; i < request.rid.len; ++i) {
-        printf("%02x", request.rid.ptr[i]);
-    }
-    printf("\n");
 
     /* device */
     printf("  device:\n");
@@ -124,4 +140,17 @@ int main() {
         printf("%02x", request.d.sn.ptr[i]);
     }
     printf(")\n");
+
+    /* fn */
+    printf("  fn: %d\n", request.fn);
+
+    /* rid */
+    printf("  rid: %ld\n", request.rid);
+
+    /* r */
+    printf("  r (bitmap 0x%08X):\n", request.request_bitmap);
+    #define X(name, key) if (request.request_bitmap & IDENTIFY_MASK_ ## name) { printf("    - %s\n", key); }
+    IDENTIFY_PARAMETERS
+    #undef X
+
 }
