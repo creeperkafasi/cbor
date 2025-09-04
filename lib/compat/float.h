@@ -103,7 +103,8 @@ static inline uint16_t __truncsfhf2(float f) {
 
 // Helper functions for better usability
 static inline float half_to_float(uint16_t half_val) {
-#ifndef __HAVE_FLOAT16
+#if !__HAVE_FLOAT16 || defined(__STRICT_ANSI__) || (defined(__GNUC__) && defined(__PEDANTIC__))
+    // Use software implementation when Float16 is not available or in pedantic mode
     return __extendhfsf2(half_val);
 #else
     return (float)*(_Float16*)&half_val;
@@ -111,7 +112,8 @@ static inline float half_to_float(uint16_t half_val) {
 }
 
 static inline uint16_t float_to_half(float float_val) {
-#ifndef __HAVE_FLOAT16
+#if !__HAVE_FLOAT16 || defined(__STRICT_ANSI__) || (defined(__GNUC__) && defined(__PEDANTIC__))
+    // Use software implementation when Float16 is not available or in pedantic mode
     return __truncsfhf2(float_val);
 #else
     _Float16 hf = (_Float16)float_val;
