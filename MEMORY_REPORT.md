@@ -48,6 +48,27 @@ The CBOR library has been instrumented with memory profiling capabilities to tra
 #### System Architecture
 - **Target**: ARM Cortex-M3 (QEMU lm3s6965evb)
 - **Compiler**: arm-none-eabi-gcc with optimizations (-Os)
+
+### Contiki-NG Production Constraints ⚠️
+
+**CRITICAL**: This library is deployed on Contiki-NG systems with severe stack limitations:
+
+- **Total Stack**: 2,048 bytes
+- **RTOS Overhead**: ~1,024 bytes  
+- **Application Limit**: 1,024 bytes (absolute maximum)
+- **Safe Threshold**: 512 bytes (recommended for production)
+
+**Stack Safety Requirements:**
+- All CBOR operations must stay under 1KB stack usage
+- Recursive parsing depth limited to ~15 levels maximum
+- No dynamic allocations (stack only)
+- Buffer sizes must be statically analyzable
+
+**Testing Strategy:**
+- Custom stress tests validate Contiki-NG constraints
+- Static analysis of worst-case stack usage
+- Runtime monitoring with stack canaries
+- Conservative safety margins (50% of limit)
 - **Pointer Size**: 4 bytes
 - **Address Space**: 32-bit
 - **Memory Model**: Harvard architecture with separate code/data spaces

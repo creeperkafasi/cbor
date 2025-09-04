@@ -24,79 +24,6 @@ static int cbor_is_break(const uint8_t* ptr) {
     return ptr != NULL && *ptr == 0xFF;
 }
 /*--------------------------------------------------------------------------*/
-cbor_major_type_t cbor_get_major_type(const uint8_t *data)
-{
-    return (*data) >> 5;
-}
-/*--------------------------------------------------------------------------*/
-argument_t cbor_get_argument(const uint8_t* data) {
-    uint8_t argument = (*data) & 0x1F;
-
-    if (argument < 24) {
-        return (argument_t){
-            .tag = ARGUMENT_1BYTE,
-            ._1byte = argument,
-            .size = 0
-        };
-    }
-    
-    if (argument == 24) {
-        return (argument_t){
-            .tag = ARGUMENT_1BYTE,
-            ._1byte = *(data + 1),
-            .size = 1
-        };
-    }
-    
-    if (argument == 25) {
-        uint16_t temp = *(uint16_t*)(data + 1);
-        return (argument_t){
-            .tag = ARGUMENT_2BYTE,
-            ._2byte = be16toh(temp),
-            .size = 2
-        };
-    }
-    
-    if (argument == 26) {
-        uint32_t temp = *(uint32_t*)(data + 1);
-        return (argument_t){
-            .tag = ARGUMENT_4BYTE,
-            ._4byte = be32toh(temp),
-            .size = 4
-        };
-    }
-    
-    if (argument == 27) {
-        uint64_t temp = *(uint64_t*)(data + 1);
-        return (argument_t){
-            .tag = ARGUMENT_8BYTE,
-            ._8byte = be64toh(temp),
-            .size = 8
-        };
-    }
-    
-    if (argument == 31) {
-        return (argument_t){
-            .tag = ARGUMENT_NONE,
-            .size = 0
-        };
-    }
-    
-    return (argument_t){
-        .tag = ARGUMENT_MALFORMED
-    };
-}
-/*--------------------------------------------------------------------------*/
-uint64_t cbor_argument_to_fixed(argument_t arg) {
-    switch (arg.tag) {
-        case ARGUMENT_1BYTE: return arg._1byte;
-        case ARGUMENT_2BYTE: return arg._2byte;
-        case ARGUMENT_4BYTE: return arg._4byte;
-        case ARGUMENT_8BYTE: return arg._8byte;
-        default: return 0;
-    }
-}
-/*--------------------------------------------------------------------------*/
 FN_RESULT (
     cbor_value_t, cbor_parser_error_t,
     cbor_parse, slice_t buf
@@ -104,9 +31,12 @@ FN_RESULT (
     if (buf.ptr == NULL) {
         return ERR(cbor_parse_result_t, NULL_PTR_ERROR);
     }
-    cbor_major_type_t major_type = cbor_get_major_type(buf.ptr);
+    
+    // Use direct computation instead of storing intermediate variables
+    const cbor_major_type_t major_type = cbor_get_major_type(buf.ptr);
     cbor_value_t value = {0};  // Initialize entire struct to zero
     value.argument = cbor_get_argument(buf.ptr);
+    
     if (value.argument.tag == ARGUMENT_MALFORMED) {
         return ERR(cbor_parse_result_t, MALFORMED_INPUT_ERROR);
     }
@@ -511,7 +441,7 @@ uint8_t* cbor_process_map(cbor_map_t map, pair_processor_function process_pair, 
  ********************************/
 
 
-uint8_t cbor_write_len_header(size_t len, cbor_major_type_t major_type, slice_t target) {
+inline uint8_t cbor_write_len_header(size_t len, cbor_major_type_t major_type, slice_t target) {
     uint8_t header_size = 0;
     if (len <= 23) {
         target.ptr[0] = (uint8_t)((major_type << 5) | len);
@@ -546,13 +476,13 @@ uint8_t cbor_write_len_header(size_t len, cbor_major_type_t major_type, slice_t 
     return header_size;
 }
 
-uint8_t write_indefinite_header(cbor_major_type_t major_type, slice_t target) {
+inline uint8_t write_indefinite_header(cbor_major_type_t major_type, slice_t target) {
     if (target.len < 1) return 0;
     target.ptr[0] = (uint8_t)((major_type << 5) | 31);
     return 1;
 }
 
-uint8_t write_break_code(slice_t target) {
+inline uint8_t write_break_code(slice_t target) {
     if (target.len < 1) return 0;
     target.ptr[0] = 0xFF;
     return 1;

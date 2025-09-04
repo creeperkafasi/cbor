@@ -52,9 +52,14 @@ ifeq ($(TARGET),native)
     CFLAGS += -fsanitize=undefined -fsanitize=float-divide-by-zero
     CFLAGS += -fsanitize=float-cast-overflow -fsanitize=address
     CFLAGS += -fstack-protector-strong -fstack-clash-protection
+    CFLAGS += -fstack-usage  # Generate .su files for stack analysis
 else ifeq ($(TARGET),embedded)
     CFLAGS += -mcpu=cortex-m3 -mthumb -mfloat-abi=soft
     CFLAGS += -ffunction-sections -fdata-sections
+    CFLAGS += -fstack-usage  # Generate .su files for stack analysis
+    # Aggressive optimization for stack usage
+    CFLAGS += -finline-functions -finline-small-functions
+    CFLAGS += -fomit-frame-pointer -foptimize-sibling-calls
 endif
 
 # Compiler-specific flags
@@ -122,6 +127,9 @@ help:
 	@echo "  clean         - Remove entire build directory"
 	@echo "  help          - Show this help message"
 	@echo "  $(EXAMPLES)   - Build individual examples"
+	@echo "  memory-report - Generate memory analysis report"
+	@echo "  stack-analysis - Analyze stack usage from .su files"
+	@echo "  stress-tests  - Generate and run stress tests"
 	@echo ""
 	@echo "Usage:"
 	@echo "  make TARGET=native        # Build for native (default)"
@@ -130,3 +138,49 @@ help:
 	@echo "  make new-example          # Build only new-example"
 	@echo ""
 	@echo "Build artifacts go to: build/$(TARGET)/"
+
+# Memory analysis targets
+memory-report: all
+	@echo "🔍 Generating comprehensive memory report..."
+	@if [ -x tools/memory_analyzer.py ]; then \
+		python3 tools/memory_analyzer.py --build-dir $(BUILD_DIR) --target $(TARGET); \
+	else \
+		echo "❌ tools/memory_analyzer.py not found or not executable"; \
+	fi
+
+stack-analysis: all
+	@echo "📊 Analyzing stack usage files..."
+	@echo "Stack usage files (.su):"
+	@find $(BUILD_DIR) -name "*.su" -exec echo "  {}" \; -exec head -5 {} \; 2>/dev/null || echo "  No .su files found"
+	@echo ""
+	@echo "Map files (.map):"
+	@find $(BUILD_DIR) -name "*.map" | head -3
+	@echo ""
+	@echo "Use 'make memory-report' for detailed analysis"
+
+stress-tests:
+	@echo "🧪 Generating stress tests..."
+	@if [ -x tools/stress_test_generator.py ]; then \
+		cd tools && python3 stress_test_generator.py; \
+	else \
+		echo "❌ tools/stress_test_generator.py not found or not executable"; \
+	fi
+
+# Build stress tests if they exist
+build-stress: all
+	@if [ -d stress_tests ]; then \
+		echo "🔨 Building stress tests..."; \
+		$(MAKE) -C stress_tests all-stress TARGET=$(TARGET); \
+	else \
+		echo "❌ No stress_tests directory found. Run 'make stress-tests' first."; \
+	fi
+
+run-stress: build-stress
+	@if [ -d stress_tests ]; then \
+		echo "🏃 Running stress tests..."; \
+		$(MAKE) -C stress_tests test-stress TARGET=$(TARGET); \
+	else \
+		echo "❌ No stress_tests directory found. Run 'make stress-tests' first."; \
+	fi
+
+.PHONY: memory-report stack-analysis stress-tests build-stress run-stress
