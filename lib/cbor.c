@@ -511,7 +511,7 @@ uint8_t* cbor_process_map(cbor_map_t map, pair_processor_function process_pair, 
  ********************************/
 
 
-uint8_t write_len_header(size_t len, cbor_major_type_t major_type, slice_t target) {
+uint8_t cbor_write_len_header(size_t len, cbor_major_type_t major_type, slice_t target) {
     uint8_t header_size = 0;
     if (len <= 23) {
         target.ptr[0] = (uint8_t)((major_type << 5) | len);
@@ -640,7 +640,7 @@ cbor_encode_result_t cbor_encode_string(slice_t string, cbor_type_t type, slice_
         major_type = CBOR_MAJOR_TYPE_BYTE_STRING;
     }
 
-    write_len_header(string.len, major_type, target);
+    cbor_write_len_header(string.len, major_type, target);
 
     if (string.len > 0 && string.ptr != NULL) {
         memcpy(&target.ptr[header_size], string.ptr, string.len);
@@ -868,7 +868,7 @@ cbor_encode_result_t cbor_encode_value_array(cbor_value_slice_t values, slice_t 
     }
 
     // Encode the header
-    uint8_t header_size = write_len_header(values.len, CBOR_MAJOR_TYPE_ARRAY, current);
+    uint8_t header_size = cbor_write_len_header(values.len, CBOR_MAJOR_TYPE_ARRAY, current);
     current.ptr += header_size;
     current.len -= header_size;
     total_len += header_size;
@@ -905,7 +905,7 @@ cbor_encode_result_t cbor_encode_value_map(cbor_pair_slice_t pairs, slice_t targ
     }
 
     // Encode the header
-    uint8_t header_size = write_len_header(pairs.len, CBOR_MAJOR_TYPE_MAP, current);
+    uint8_t header_size = cbor_write_len_header(pairs.len, CBOR_MAJOR_TYPE_MAP, current);
     current.ptr += header_size;
     current.len -= header_size;
     total_len += header_size;
@@ -985,4 +985,26 @@ cbor_encode, cbor_value_t value, slice_t target) {
             return ERR(cbor_encode_result_t, CBOR_ENCODER_TODO);
     }
     return ERR(cbor_encode_result_t, CBOR_ENCODER_TODO);
+}
+
+cbor_encode_result_t cbor_encode_pair (cbor_value_t first, cbor_value_t second, slice_t target) {
+    cbor_encode_result_t first_result = cbor_encode(first, target);
+    if (first_result.is_error) {
+        return first_result;
+    }
+
+    slice_t next_target = {
+        .ptr = target.ptr + first_result.ok.len,
+        .len = target.len - first_result.ok.len
+    };
+
+    cbor_encode_result_t second_result = cbor_encode(second, next_target);
+    if (second_result.is_error) {
+        return second_result;
+    }
+    
+    return OK(cbor_encode_result_t, ((slice_t){
+        .ptr = target.ptr,
+        .len = first_result.ok.len + second_result.ok.len
+    }));
 }

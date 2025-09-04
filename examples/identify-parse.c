@@ -45,8 +45,8 @@ void process_identify_parameters(const cbor_value_t *element, void *process_arg)
     memcpy(keystr, element->value.bytes.ptr, element->value.bytes.len);
     keystr[element->value.bytes.len] = 0;
 
-    #define X(name, key) if (!strcmp(keystr, key)) { \
-    printf("%s\n", keystr); *bitmap |= IDENTIFY_MASK_ ## name; }
+    #define X(name, key) if (!strcmp(keystr, CBOR_KEY_ ## key)) { \
+    printf("%s\n", keystr); *bitmap |= IDENTIFY_MASK_ ## key; }
     IDENTIFY_PARAMETERS
     #undef X
 }
@@ -145,11 +145,11 @@ int main() {
     printf("  fn: %d\n", request.fn);
 
     /* rid */
-    printf("  rid: %ld\n", request.rid);
+    printf("  rid: %lld\n", (long long)request.rid);
 
     /* r */
-    printf("  r (bitmap 0x%08X):\n", request.request_bitmap);
-    #define X(name, key) if (request.request_bitmap & IDENTIFY_MASK_ ## name) { printf("    - %s\n", key); }
+    printf("  r (bitmap 0x%08lX):\n", (unsigned long)request.request_bitmap);
+    #define X(name, key) if (request.request_bitmap & IDENTIFY_MASK_ ## key) { printf("    - %s\n", CBOR_KEY_ ## key); }
     IDENTIFY_PARAMETERS
     #undef X
 

@@ -267,4 +267,9 @@ cbor_encode, cbor_value_t value, slice_t target);
 cbor_encode_result_t cbor_encode_value_array_indefinite(cbor_value_slice_t values, slice_t target);
 cbor_encode_result_t cbor_encode_value_map_indefinite(cbor_pair_slice_t pairs, slice_t target);
 
+cbor_encode_result_t cbor_encode_pair (cbor_value_t first, cbor_value_t second, slice_t target);
+
+// raw function that writes only the major type and the argument!!!
+uint8_t cbor_write_len_header(size_t len, cbor_major_type_t major_type, slice_t target);
+
 #endif /*CBOR_H*/
