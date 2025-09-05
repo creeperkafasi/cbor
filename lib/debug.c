@@ -70,7 +70,7 @@ void print_cbor_value(cbor_value_t value, int indent)
     switch (value.type)
     {
     case CBOR_TYPE_INTEGER:
-        printf("Integer: %"PRIi64"\n", value.value.integer);
+        printf("Integer: %"PRIi64"\n", (long long int)value.value.integer);
         break;
     case CBOR_TYPE_BYTE_STRING:
         printf("Byte String: %.*s\n", (int)value.value.bytes.len, value.value.bytes.ptr);
@@ -79,10 +79,10 @@ void print_cbor_value(cbor_value_t value, int indent)
         printf("Text String: %.*s\n", (int)value.value.bytes.len, value.value.bytes.ptr);
         break;
     case CBOR_TYPE_ARRAY:
-        printf("Array: %"PRIu32"\n", value.value.array.length);
+        printf("Array: %"PRIu32"\n", (unsigned int)value.value.array.length);
         break;
     case CBOR_TYPE_MAP:
-        printf("Map: %"PRIu32"\n", value.value.map.length);
+        printf("Map: %"PRIu32"\n", (unsigned int)value.value.map.length);
         break;
     case CBOR_TYPE_SIMPLE:
         switch (value.value.simple) {

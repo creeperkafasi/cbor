@@ -2,7 +2,23 @@
 #define CBOR_DEBUG_H
 
 #include "cbor.h"
+
+#ifndef __STDC_FORMAT_MACROS
+#define __STDC_FORMAT_MACROS
+#endif
 #include <inttypes.h>
+
+/* Use portable format macros and casts for maximum compatibility.
+   Always cast to the same types to avoid format warnings */
+#ifdef PRIi64
+  #undef PRIi64
+#endif
+#define PRIi64 "lli"
+
+#ifdef PRIu32  
+  #undef PRIu32
+#endif
+#define PRIu32 "u"
 
 #ifndef TARGET_EMBEDDED
 #include <stdio.h>
