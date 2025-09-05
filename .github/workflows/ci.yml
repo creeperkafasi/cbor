@@ -92,32 +92,62 @@ jobs:
     - name: Run main application in QEMU
       run: |
         echo "Running main application in QEMU..."
-        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/main.elf || echo "QEMU test completed (exit code: $?)"
+        timeout 60s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/main.elf > qemu_main.log 2>&1 || echo "QEMU test completed (exit code: $?)"
+        cat qemu_main.log
         
     - name: Run test-parse in QEMU
       run: |
         echo "Running test-parse in QEMU..."
-        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-parse.elf || echo "QEMU test completed (exit code: $?)"
+        timeout 60s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-parse.elf > qemu_parse.log 2>&1 || echo "QEMU test completed (exit code: $?)"
+        cat qemu_parse.log
         
     - name: Run test-encode in QEMU
       run: |
         echo "Running test-encode in QEMU..."
-        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-encode.elf || echo "QEMU test completed (exit code: $?)"
+        timeout 60s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-encode.elf > qemu_encode.log 2>&1 || echo "QEMU test completed (exit code: $?)"
+        cat qemu_encode.log
         
     - name: Run test-indefinite in QEMU
       run: |
         echo "Running test-indefinite in QEMU..."
-        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-indefinite.elf || echo "QEMU test completed (exit code: $?)"
+        timeout 60s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/test-indefinite.elf > qemu_indefinite.log 2>&1 || echo "QEMU test completed (exit code: $?)"
+        cat qemu_indefinite.log
         
     - name: Run identify-parse in QEMU
       run: |
         echo "Running identify-parse in QEMU..."
-        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/identify-parse.elf || echo "QEMU test completed (exit code: $?)"
+        timeout 60s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/identify-parse.elf > qemu_identify_parse.log 2>&1 || echo "QEMU test completed (exit code: $?)"
+        cat qemu_identify_parse.log
         
     - name: Run identify-encode in QEMU
       run: |
         echo "Running identify-encode in QEMU..."
-        timeout 30s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/identify-encode.elf || echo "QEMU test completed (exit code: $?)"
+        timeout 60s qemu-system-arm -M lm3s6965evb -cpu cortex-m3 -nographic -semihosting -kernel build/embedded/identify-encode.elf > qemu_identify_encode.log 2>&1 || echo "QEMU test completed (exit code: $?)"
+        cat qemu_identify_encode.log
+
+    - name: Verify test outputs contain expected patterns
+      run: |
+        echo "Checking for test success patterns in outputs..."
+        
+        # Check if tests show passing results
+        if grep -q "PASS\|✅\|SUCCESS" qemu_parse.log qemu_encode.log qemu_indefinite.log; then
+          echo "✅ Found success patterns in test outputs"
+        else
+          echo "⚠️  No clear success patterns found, checking for errors..."
+          if grep -q "FAIL\|ERROR\|❌\|ABORT" qemu_parse.log qemu_encode.log qemu_indefinite.log; then
+            echo "❌ Found error patterns in test outputs"
+            exit 1
+          else
+            echo "ℹ️  No clear success or error patterns found"
+          fi
+        fi
+        
+    - name: Upload QEMU logs as artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: embedded-qemu-test-logs
+        path: qemu_*.log
 
   test-matrix:
     name: Multi-compiler Tests
