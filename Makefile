@@ -30,7 +30,7 @@ MAIN_OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(MAIN_SRC))
 MAIN_OUT = $(BUILD_DIR)/$(if $(filter embedded,$(TARGET)),main.elf,main)
 
 # Examples - JUST ADD NEW EXAMPLES HERE!
-EXAMPLES = identify-parse identify-encode test-parse test-encode test-indefinite
+EXAMPLES = identify-parse identify-encode test-parse test-encode test-indefinite test-stress
 
 # Auto-generate example paths
 EXAMPLE_SRCS = $(addprefix $(EXAMPLES_DIR)/,$(addsuffix .c,$(EXAMPLES)))

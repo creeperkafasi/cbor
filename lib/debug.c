@@ -9,8 +9,7 @@
 #include "debug.h"
 
 /*--------------------------------------------------------------------------*/
-void print_single(const cbor_value_t* value, void* arg) {
-
+cbor_custom_processor_result_t print_single(const cbor_value_t* value, void* arg) {
     #ifdef CBOR_DEBUG_REPR
     print_cbor_value(*value, (size_t)arg);
     if (value->type == CBOR_TYPE_MAP) {
@@ -20,10 +19,10 @@ void print_single(const cbor_value_t* value, void* arg) {
         cbor_process_array(value->value.array, print_single, (void*)((size_t)arg + (size_t)4));
     }
     #endif
+    return CBOR_CUSTOM_PROCESSOR_OK();
 }
 /*--------------------------------------------------------------------------*/
-void print_pair(const cbor_value_t* key, const cbor_value_t* value, void* arg) {
-
+cbor_custom_processor_result_t print_pair(const cbor_value_t* key, const cbor_value_t* value, void* arg) {
     #ifdef CBOR_DEBUG_REPR
     print_cbor_value(*key, (size_t)arg);
     print_cbor_value(*value, (size_t)arg);
@@ -34,6 +33,7 @@ void print_pair(const cbor_value_t* key, const cbor_value_t* value, void* arg) {
         cbor_process_array(value->value.array, print_single, (void*)((size_t)arg + (size_t)4));
     }
     #endif
+    return CBOR_CUSTOM_PROCESSOR_OK();
 }
 /*--------------------------------------------------------------------------*/
 void print_cbor_type(cbor_major_type_t type) {

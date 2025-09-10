@@ -6,21 +6,11 @@
 #include <assert.h>
 #include "cbor.h"
 #include "debug.h"
+#include "test.h"
 
 // Test result tracking
 static int tests_passed = 0;
 static int tests_failed = 0;
-
-#define TEST_ASSERT(condition, message) \
-    do { \
-        if (condition) { \
-            printf("✅ PASS: %s\n", message); \
-            tests_passed++; \
-        } else { \
-            printf("❌ FAIL: %s\n", message); \
-            tests_failed++; \
-        } \
-    } while(0)
 
 // Helper function to compare byte arrays
 int compare_bytes(const uint8_t* actual, const uint8_t* expected, size_t len) {
@@ -42,16 +32,18 @@ void print_bytes(const uint8_t* data, size_t len) {
 }
 
 // Callback functions for testing
-void count_elements(const cbor_value_t* value, void* arg) {
+cbor_custom_processor_result_t count_elements(const cbor_value_t* value, void* arg) {
     (void)value; // Unused
     int* count = (int*)arg;
     (*count)++;
+    return CBOR_CUSTOM_PROCESSOR_OK();
 }
 
-void count_pairs(const cbor_value_t* key, const cbor_value_t* value, void* arg) {
+cbor_custom_processor_result_t count_pairs(const cbor_value_t* key, const cbor_value_t* value, void* arg) {
     (void)key; (void)value; // Unused
     int* count = (int*)arg;
     (*count)++;
+    return CBOR_CUSTOM_PROCESSOR_OK();
 }
 
 // Test indefinite length array encoding
@@ -137,15 +129,15 @@ void test_indefinite_array_parsing() {
     
     if (!result.is_error) {
         TEST_ASSERT(result.ok.type == CBOR_TYPE_ARRAY, "Parsed value should be an array");
-        TEST_ASSERT(result.ok.value.array.length == UINT32_MAX, "Array should be marked as indefinite length");
+        TEST_ASSERT(result.ok.value.array.length == CBOR_LENGTH_INDEFINITE, "Array should be marked as indefinite length");
         
         // Test processing the array
         int element_count = 0;
         
-        uint8_t* end = cbor_process_array(result.ok.value.array, count_elements, &element_count);
-        TEST_ASSERT(end != NULL, "Array processing should succeed");
+        cbor_process_result_t array_result = cbor_process_array(result.ok.value.array, count_elements, &element_count);
+        TEST_ASSERT(!array_result.is_error, "Array processing should succeed");
         TEST_ASSERT(element_count == 3, "Should process 3 elements");
-        TEST_ASSERT(end == cbor_data + sizeof(cbor_data), "Should end at the correct position");
+        TEST_ASSERT(array_result.ok == cbor_data + sizeof(cbor_data), "Should end at the correct position");
     }
 }
 
@@ -162,15 +154,15 @@ void test_indefinite_map_parsing() {
     
     if (!result.is_error) {
         TEST_ASSERT(result.ok.type == CBOR_TYPE_MAP, "Parsed value should be a map");
-        TEST_ASSERT(result.ok.value.map.length == UINT32_MAX, "Map should be marked as indefinite length");
+        TEST_ASSERT(result.ok.value.map.length == CBOR_LENGTH_INDEFINITE, "Map should be marked as indefinite length");
         
         // Test processing the map
         int pair_count = 0;
         
-        uint8_t* end = cbor_process_map(result.ok.value.map, count_pairs, &pair_count);
-        TEST_ASSERT(end != NULL, "Map processing should succeed");
+        cbor_process_result_t map_result = cbor_process_map(result.ok.value.map, count_pairs, &pair_count);
+        TEST_ASSERT(!map_result.is_error, "Map processing should succeed");
         TEST_ASSERT(pair_count == 2, "Should process 2 pairs");
-        TEST_ASSERT(end == cbor_data + sizeof(cbor_data), "Should end at the correct position");
+        TEST_ASSERT(map_result.ok == cbor_data + sizeof(cbor_data), "Should end at the correct position");
     }
 }
 
@@ -259,10 +251,10 @@ void test_indefinite_text_string_parsing() {
         // Test processing the string chunks
         int chunk_count = 0;
         
-        uint8_t* end = cbor_process_indefinite_string(result.ok.value.array, CBOR_TYPE_TEXT_STRING, count_elements, &chunk_count);
-        TEST_ASSERT(end != NULL, "String processing should succeed");
+        cbor_process_result_t string_result = cbor_process_indefinite_string(result.ok.value.array, CBOR_TYPE_TEXT_STRING, count_elements, &chunk_count);
+        TEST_ASSERT(!string_result.is_error, "String processing should succeed");
         TEST_ASSERT(chunk_count == 2, "Should process 2 chunks");
-        TEST_ASSERT(end == cbor_data + sizeof(cbor_data), "Should end at the correct position");
+        TEST_ASSERT(string_result.ok == cbor_data + sizeof(cbor_data), "Should end at the correct position");
     }
 }
 
@@ -284,10 +276,10 @@ void test_indefinite_byte_string_parsing() {
         // Test processing the string chunks
         int chunk_count = 0;
         
-        uint8_t* end = cbor_process_indefinite_string(result.ok.value.array, CBOR_TYPE_BYTE_STRING, count_elements, &chunk_count);
-        TEST_ASSERT(end != NULL, "String processing should succeed");
+        cbor_process_result_t string_result = cbor_process_indefinite_string(result.ok.value.array, CBOR_TYPE_BYTE_STRING, count_elements, &chunk_count);
+        TEST_ASSERT(!string_result.is_error, "String processing should succeed");
         TEST_ASSERT(chunk_count == 2, "Should process 2 chunks");
-        TEST_ASSERT(end == cbor_data + sizeof(cbor_data), "Should end at the correct position");
+        TEST_ASSERT(string_result.ok == cbor_data + sizeof(cbor_data), "Should end at the correct position");
     }
 }
 

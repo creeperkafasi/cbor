@@ -6,6 +6,7 @@
 #include <assert.h>
 #include "cbor.h"
 #include "debug.h"
+#include "test.h"
 
 // Test result tracking
 static int tests_passed = 0;
@@ -16,26 +17,17 @@ static int element_count = 0;
 static int pair_count = 0;
 
 // Helper functions for testing array/map processing
-void count_elements(const cbor_value_t* value, void* arg) {
+static inline cbor_custom_processor_result_t count_elements(const cbor_value_t* value, void* arg) {
     (void)value; (void)arg; // Suppress unused warnings
     element_count++;
+    return CBOR_CUSTOM_PROCESSOR_OK();
 }
 
-void count_pairs(const cbor_value_t* key, const cbor_value_t* value, void* arg) {
+static inline cbor_custom_processor_result_t count_pairs(const cbor_value_t* key, const cbor_value_t* value, void* arg) {
     (void)key; (void)value; (void)arg; // Suppress unused warnings
     pair_count++;
+    return CBOR_CUSTOM_PROCESSOR_OK();
 }
-
-#define TEST_ASSERT(condition, message) \
-    do { \
-        if (condition) { \
-            printf("✅ PASS: %s\n", message); \
-            tests_passed++; \
-        } else { \
-            printf("❌ FAIL: %s\n", message); \
-            tests_failed++; \
-        } \
-    } while(0)
 
 // Test 1: Basic integer parsing
 void test_integer_parsing() {
@@ -162,8 +154,8 @@ void test_array_parsing() {
     // Test processing array elements
     element_count = 0; // Reset counter
     
-    uint8_t* end_ptr = cbor_process_array(result.ok.value.array, count_elements, NULL);
-    TEST_ASSERT(end_ptr != NULL, "Array processing should succeed");
+    cbor_process_result_t array_result = cbor_process_array(result.ok.value.array, count_elements, NULL);
+    TEST_ASSERT(!array_result.is_error, "Array processing should succeed");
     TEST_ASSERT(element_count == 3, "Should process 3 elements");
 }
 
@@ -192,8 +184,8 @@ void test_map_parsing() {
     // Test processing map pairs
     pair_count = 0; // Reset counter
     
-    uint8_t* end_ptr = cbor_process_map(result.ok.value.map, count_pairs, NULL);
-    TEST_ASSERT(end_ptr != NULL, "Map processing should succeed");
+    cbor_process_result_t map_result = cbor_process_map(result.ok.value.map, count_pairs, NULL);
+    TEST_ASSERT(!map_result.is_error, "Map processing should succeed");
     TEST_ASSERT(pair_count == 1, "Should process 1 pair");
 }
 

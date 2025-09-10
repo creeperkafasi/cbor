@@ -29,8 +29,8 @@
 void print_cbor_value(cbor_value_t value, int indent);
 void print_cbor_type(cbor_major_type_t type);
 
-void print_single(const cbor_value_t* value, void* arg);
-void print_pair(const cbor_value_t* key, const cbor_value_t* value, void* arg);
+cbor_custom_processor_result_t print_single(const cbor_value_t* value, void* arg);
+cbor_custom_processor_result_t print_pair(const cbor_value_t* key, const cbor_value_t* value, void* arg);
 
 static inline void print_slice_hex(slice_t slice) {
     for (size_t i = 0; i < (slice.len / 8 + 1); i++) {

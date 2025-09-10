@@ -31,39 +31,59 @@ FN_RESULT (
     if (buf.ptr == NULL) {
         return ERR(cbor_parse_result_t, NULL_PTR_ERROR);
     }
-    cbor_major_type_t major_type = cbor_get_major_type(buf.ptr);
+    
+    if (buf.len == 0) {
+        return ERR(cbor_parse_result_t, EMPTY_BUFFER_ERROR);
+    }
+    
+    cbor_major_type_t major_type = cbor_get_major_type_safe(buf);
+    if (major_type == CBOR_MAJOR_TYPE_ERROR) {
+        return ERR(cbor_parse_result_t, BUFFER_OVERFLOW_ERROR);
+    }
+    
     cbor_value_t value = {0};  // Initialize entire struct to zero
-    value.argument = cbor_get_argument(buf.ptr);
+    value.argument = cbor_get_argument_safe(buf, 0);
     if (value.argument.tag == ARGUMENT_MALFORMED) {
         return ERR(cbor_parse_result_t, MALFORMED_INPUT_ERROR);
+    }
+
+    // Validate that we have enough bytes for the header and argument
+    size_t header_size = 1 + value.argument.size;
+    if (!cbor_validate_bounds(buf, 0, header_size)) {
+        return ERR(cbor_parse_result_t, BUFFER_OVERFLOW_ERROR);
     }
 
     switch(major_type) {
     case CBOR_MAJOR_TYPE_UNSIGNED_INTEGER:
         value.type = CBOR_TYPE_INTEGER;
         value.value.integer = (int64_t)cbor_argument_to_fixed(value.argument);
-        value.next = buf.ptr + value.argument.size + 1;
+        value.next = buf.ptr + header_size;
         break;
     case CBOR_MAJOR_TYPE_NEGATIVE_INTEGER:
         value.type = CBOR_TYPE_INTEGER;
         value.value.integer = - 1 - (int64_t)cbor_argument_to_fixed(value.argument);
-        value.next = buf.ptr + value.argument.size + 1;
+        value.next = buf.ptr + header_size;
         break;
     case CBOR_MAJOR_TYPE_BYTE_STRING:
         value.type = CBOR_TYPE_BYTE_STRING;
         if (value.argument.tag == ARGUMENT_NONE) {
             // Indefinite length byte string
             value.value.array = (cbor_array_t) {
-                .length = UINT32_MAX, // Special marker for indefinite length
-                .inside = buf.ptr + value.argument.size + 1,
-                .max_size = buf.len - (value.argument.size + 1),
+                .length = CBOR_LENGTH_INDEFINITE, // Special marker for indefinite length
+                .inside = buf.ptr + header_size,
+                .max_size = buf.len - header_size,
             };
             value.next = NULL;
         }
         else {
-            value.value.bytes.len = cbor_argument_to_fixed(value.argument);
-            value.value.bytes.ptr = buf.ptr + value.argument.size + 1;
-            value.next = buf.ptr + value.argument.size + cbor_argument_to_fixed(value.argument) + 1;
+            uint64_t string_len = cbor_argument_to_fixed(value.argument);
+            size_t total_size = header_size + string_len;
+            if (!cbor_validate_bounds(buf, 0, total_size)) {
+                return ERR(cbor_parse_result_t, BUFFER_OVERFLOW_ERROR);
+            }
+            value.value.bytes.len = string_len;
+            value.value.bytes.ptr = buf.ptr + header_size;
+            value.next = buf.ptr + total_size;
         }
         break;
     case CBOR_MAJOR_TYPE_TEXT_STRING:
@@ -71,16 +91,21 @@ FN_RESULT (
         if (value.argument.tag == ARGUMENT_NONE) {
             // Indefinite length text string
             value.value.array = (cbor_array_t) {
-                .length = UINT32_MAX, // Special marker for indefinite length
-                .inside = buf.ptr + value.argument.size + 1,
-                .max_size = buf.len - (value.argument.size + 1),
+                .length = CBOR_LENGTH_INDEFINITE, // Special marker for indefinite length
+                .inside = buf.ptr + header_size,
+                .max_size = buf.len - header_size,
             };
             value.next = NULL;
         }
         else {
-            value.value.bytes.len = cbor_argument_to_fixed(value.argument);
-            value.value.bytes.ptr = buf.ptr + value.argument.size + 1;
-            value.next = buf.ptr + value.argument.size + cbor_argument_to_fixed(value.argument) + 1;
+            uint64_t string_len = cbor_argument_to_fixed(value.argument);
+            size_t total_size = header_size + string_len;
+            if (!cbor_validate_bounds(buf, 0, total_size)) {
+                return ERR(cbor_parse_result_t, BUFFER_OVERFLOW_ERROR);
+            }
+            value.value.bytes.len = string_len;
+            value.value.bytes.ptr = buf.ptr + header_size;
+            value.next = buf.ptr + total_size;
         }
         break;
     case CBOR_MAJOR_TYPE_ARRAY:
@@ -88,17 +113,17 @@ FN_RESULT (
         if (value.argument.tag == ARGUMENT_NONE) {
             // Indefinite length array
             value.value.array = (cbor_array_t) {
-                .length = UINT32_MAX, // Special marker for indefinite length
-                .inside = buf.ptr + value.argument.size + 1,
-                .max_size = buf.len - (value.argument.size + 1),
+                .length = CBOR_LENGTH_INDEFINITE, // Special marker for indefinite length
+                .inside = buf.ptr + header_size,
+                .max_size = buf.len - header_size,
             };
             value.next = NULL;
         }
         else {
             value.value.array = (cbor_array_t) {
                 .length = cbor_argument_to_fixed(value.argument),
-                .inside = buf.ptr + value.argument.size + 1,
-                .max_size = buf.ptr + buf.len - value.next,
+                .inside = buf.ptr + header_size,
+                .max_size = buf.len - header_size,
             };
             value.next = NULL;
         }
@@ -108,16 +133,16 @@ FN_RESULT (
         if (value.argument.tag == ARGUMENT_NONE) {
             // Indefinite length map
             value.value.map = (cbor_map_t){
-                .length = UINT32_MAX, // Special marker for indefinite length
-                .inside = buf.ptr + value.argument.size + 1,
-                .max_size = buf.len - (value.argument.size + 1)
+                .length = CBOR_LENGTH_INDEFINITE, // Special marker for indefinite length
+                .inside = buf.ptr + header_size,
+                .max_size = buf.len - header_size
             };
         }
         else {
             value.value.map = (cbor_map_t){
                 .length = cbor_argument_to_fixed(value.argument),
-                .inside = buf.ptr + value.argument.size + 1,
-                .max_size = buf.ptr + buf.len - value.next
+                .inside = buf.ptr + header_size,
+                .max_size = buf.len - header_size
             };
         }
         value.next = NULL;
@@ -169,7 +194,7 @@ FN_RESULT (
             /* malformed or unhandled */
             break;
         }
-        value.next = buf.ptr + value.argument.size + 1;
+        value.next = buf.ptr + header_size;
         break;
     default:
         return ERR(cbor_parse_result_t, PARSER_TODO); // TODO
@@ -177,9 +202,9 @@ FN_RESULT (
     return OK(cbor_parse_result_t, value);
 }
 /*--------------------------------------------------------------------------*/
-uint8_t* cbor_process_indefinite_string(cbor_array_t string_chunks, cbor_type_t expected_type, single_processor_function process_single, void* process_arg) {
+cbor_process_result_t cbor_process_indefinite_string(cbor_array_t string_chunks, cbor_type_t expected_type, single_processor_function process_single, void* process_arg) {
     if (string_chunks.inside == NULL) {
-        return NULL;
+        return ERR(cbor_process_result_t, NULL_PTR_ERROR);
     }
     
     uint8_t* current = string_chunks.inside;
@@ -189,11 +214,17 @@ uint8_t* cbor_process_indefinite_string(cbor_array_t string_chunks, cbor_type_t 
         // Check bounds
         if (current >= string_chunks.inside + string_chunks.max_size) {
             printf("ERROR: String processing exceeded bounds in indefinite string\n");
-            return NULL;
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+        }
+        
+        // Calculate remaining bytes
+        size_t remaining = string_chunks.max_size - (current - string_chunks.inside);
+        if (remaining == 0) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
         }
         
         slice_t chunk_slice = (slice_t) {
-            .len = string_chunks.max_size - (current - string_chunks.inside),
+            .len = remaining,
             .ptr = current,
         };
 
@@ -201,51 +232,68 @@ uint8_t* cbor_process_indefinite_string(cbor_array_t string_chunks, cbor_type_t 
 
         if (chunk.is_error) {
             printf("STRING CHUNK RETURNED ERROR: %d\n", chunk.err);
-            return NULL;
+            return ERR(cbor_process_result_t, chunk.err);
         }
 
         // Verify the chunk is the correct string type
         if (chunk.ok.type != expected_type) {
             printf("ERROR: Mixed string types in indefinite string (expected %d, got %d)\n", expected_type, chunk.ok.type);
-            return NULL;
+            return ERR(cbor_process_result_t, MALFORMED_INPUT_ERROR);
         }
 
         // Verify it's a definite length string chunk
         if (chunk.ok.argument.tag == ARGUMENT_NONE) {
             printf("ERROR: Indefinite length chunk within indefinite string\n");
-            return NULL;
+            return ERR(cbor_process_result_t, MALFORMED_INPUT_ERROR);
         }
 
         if (process_single != NULL) {
             process_single(&chunk.ok, process_arg);
         }
 
+        // Validate next pointer bounds
+        if (chunk.ok.next == NULL || chunk.ok.next < string_chunks.inside || 
+            chunk.ok.next > string_chunks.inside + string_chunks.max_size) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+        }
+        
         current = chunk.ok.next;
     }
     
+    // Validate break code position
+    if (current >= string_chunks.inside + string_chunks.max_size) {
+        return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+    }
+    
     // Skip over the break code
-    return current + 1;
+    return OK(cbor_process_result_t, current + 1);
 }
 /*--------------------------------------------------------------------------*/
-uint8_t* cbor_process_array(cbor_array_t array, single_processor_function process_single, void* process_arg) {
+cbor_process_result_t cbor_process_array(cbor_array_t array, single_processor_function process_single, void* process_arg) {
     if (array.inside == NULL) {
-        return NULL;
+        return ERR(cbor_process_result_t, NULL_PTR_ERROR);
     }
     
     uint8_t* current = array.inside;
     
-    // Handle indefinite length arrays (length == UINT32_MAX)
-    if (array.length == UINT32_MAX) {
+    // Handle indefinite length arrays (length == CBOR_LENGTH_INDEFINITE)
+    if (array.length == CBOR_LENGTH_INDEFINITE) {
         // Process elements until we hit the break code (0xFF)
         while (!cbor_is_break(current)) {
             // Check bounds
             if (current >= array.inside + array.max_size) {
                 printf("ERROR: Array processing exceeded bounds in indefinite array\n");
-                return NULL;
+                return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+            }
+            
+            // Calculate remaining bytes
+            size_t remaining = array.max_size - (current - array.inside);
+            if (remaining == 0) {
+                return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
             }
             
             slice_t element_slice = (slice_t) {
-                .len = array.max_size - (current - array.inside),
+                .len = remaining,
                 .ptr = current,
             };
 
@@ -253,39 +301,79 @@ uint8_t* cbor_process_array(cbor_array_t array, single_processor_function proces
 
             if (element.is_error) {
                 printf("ELEMENT RETURNED ERROR: %d\n", element.err);
-                return NULL;
+                return ERR(cbor_process_result_t, element.err);
             }
 
             if (process_single != NULL) {
                 process_single(&element.ok, process_arg);
             }
 
-        if (element.ok.next == NULL) {
-            if (element.ok.type == CBOR_TYPE_MAP) {
-                element.ok.next = cbor_process_map(element.ok.value.map, NULL, process_arg);
-            } 
-            else if (element.ok.type == CBOR_TYPE_ARRAY) {
-                element.ok.next = cbor_process_array(element.ok.value.array, NULL, process_arg);
+            if (element.ok.next == NULL) {
+                if (element.ok.type == CBOR_TYPE_MAP) {
+                    cbor_process_result_t map_result = cbor_process_map(element.ok.value.map, NULL, process_arg);
+                    if (map_result.is_error) {
+                        return map_result;
+                    }
+                    element.ok.next = map_result.ok;
+                } 
+                else if (element.ok.type == CBOR_TYPE_ARRAY) {
+                    cbor_process_result_t array_result = cbor_process_array(element.ok.value.array, NULL, process_arg);
+                    if (array_result.is_error) {
+                        return array_result;
+                    }
+                    element.ok.next = array_result.ok;
+                }
+                else if (element.ok.type == CBOR_TYPE_BYTE_STRING && element.ok.argument.tag == ARGUMENT_NONE) {
+                    cbor_process_result_t string_result = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_BYTE_STRING, NULL, process_arg);
+                    if (string_result.is_error) {
+                        return string_result;
+                    }
+                    element.ok.next = string_result.ok;
+                }
+                else if (element.ok.type == CBOR_TYPE_TEXT_STRING && element.ok.argument.tag == ARGUMENT_NONE) {
+                    cbor_process_result_t string_result = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_TEXT_STRING, NULL, process_arg);
+                    if (string_result.is_error) {
+                        return string_result;
+                    }
+                    element.ok.next = string_result.ok;
+                }
             }
-            else if (element.ok.type == CBOR_TYPE_BYTE_STRING && element.ok.argument.tag == ARGUMENT_NONE) {
-                element.ok.next = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_BYTE_STRING, NULL, process_arg);
+            
+            // Validate next pointer bounds
+            if (element.ok.next == NULL || element.ok.next < array.inside || 
+                element.ok.next > array.inside + array.max_size) {
+                return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
             }
-            else if (element.ok.type == CBOR_TYPE_TEXT_STRING && element.ok.argument.tag == ARGUMENT_NONE) {
-                element.ok.next = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_TEXT_STRING, NULL, process_arg);
-            }
-        }            current = element.ok.next;
+            
+            current = element.ok.next;
+        }
+        // Validate break code position
+        if (current >= array.inside + array.max_size) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
         }
         // Skip over the break code
-        return current + 1;
+        return OK(cbor_process_result_t, current + 1);
     }
     
     // Handle definite length arrays
-    if (array.length == 0) return array.inside;
+    if (array.length == 0) {
+        return OK(cbor_process_result_t, array.inside);
+    }
 
     for (size_t i = 0; i < array.length; i++) {
+        // Check bounds
+        if (current >= array.inside + array.max_size) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+        }
+        
+        // Calculate remaining bytes
+        size_t remaining = array.max_size - (current - array.inside);
+        if (remaining == 0) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+        }
         
         slice_t element_slice = (slice_t) {
-            .len = array.max_size - (current - array.inside),
+            .len = remaining,
             .ptr = current,
         };
 
@@ -293,6 +381,7 @@ uint8_t* cbor_process_array(cbor_array_t array, single_processor_function proces
 
         if (element.is_error) {
             printf("ELEMENT RETURNED ERROR: %d\n", element.err);
+            return ERR(cbor_process_result_t, element.err);
         }
 
         if (process_single != NULL) {
@@ -302,64 +391,106 @@ uint8_t* cbor_process_array(cbor_array_t array, single_processor_function proces
 
         if (element.ok.next == NULL) {
             if (element.ok.type == CBOR_TYPE_MAP) {
-                element.ok.next = cbor_process_map(element.ok.value.map, NULL, process_arg);
+                cbor_process_result_t map_result = cbor_process_map(element.ok.value.map, NULL, process_arg);
+                if (map_result.is_error) {
+                    return map_result;
+                }
+                element.ok.next = map_result.ok;
             } 
             else if (element.ok.type == CBOR_TYPE_ARRAY) {
-                element.ok.next = cbor_process_array(element.ok.value.array, NULL, process_arg);
+                cbor_process_result_t array_result = cbor_process_array(element.ok.value.array, NULL, process_arg);
+                if (array_result.is_error) {
+                    return array_result;
+                }
+                element.ok.next = array_result.ok;
             }
             else if (element.ok.type == CBOR_TYPE_BYTE_STRING && element.ok.argument.tag == ARGUMENT_NONE) {
-                element.ok.next = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_BYTE_STRING, NULL, process_arg);
+                cbor_process_result_t string_result = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_BYTE_STRING, NULL, process_arg);
+                if (string_result.is_error) {
+                    return string_result;
+                }
+                element.ok.next = string_result.ok;
             }
             else if (element.ok.type == CBOR_TYPE_TEXT_STRING && element.ok.argument.tag == ARGUMENT_NONE) {
-                element.ok.next = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_TEXT_STRING, NULL, process_arg);
+                cbor_process_result_t string_result = cbor_process_indefinite_string(element.ok.value.array, CBOR_TYPE_TEXT_STRING, NULL, process_arg);
+                if (string_result.is_error) {
+                    return string_result;
+                }
+                element.ok.next = string_result.ok;
             }
         }
 
+        // Validate next pointer bounds
+        if (element.ok.next == NULL || element.ok.next < array.inside || 
+            element.ok.next > array.inside + array.max_size) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+        }
+        
         current = element.ok.next;
-
     }
-    return current;
+    return OK(cbor_process_result_t, current);
 }
 /*--------------------------------------------------------------------------*/
-uint8_t* cbor_process_map(cbor_map_t map, pair_processor_function process_pair, void* process_arg) {
+cbor_process_result_t cbor_process_map(cbor_map_t map, pair_processor_function process_pair, void* process_arg) {
     if (map.inside == NULL) {
-        return NULL;
+        return ERR(cbor_process_result_t, NULL_PTR_ERROR);
     }
     
     uint8_t* current = map.inside;
     
-    // Handle indefinite length maps (length == UINT32_MAX)
-    if (map.length == UINT32_MAX) {
+    // Handle indefinite length maps (length == CBOR_LENGTH_INDEFINITE)
+    if (map.length == CBOR_LENGTH_INDEFINITE) {
         // Process key-value pairs until we hit the break code (0xFF)
         while (!cbor_is_break(current)) {
             // Check bounds
             if (current >= map.inside + map.max_size) {
                 printf("ERROR: Map processing exceeded bounds in indefinite map\n");
-                return NULL;
+                return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+            }
+            
+            // Calculate remaining bytes for key
+            size_t remaining = map.max_size - (current - map.inside);
+            if (remaining == 0) {
+                printf("ERROR: Map processing no bytes remain to parse the key\n");
+                return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
             }
             
             // Parse key
             slice_t key_slice = {
-                .len = map.max_size - (current - map.inside),
+                .len = remaining,
                 .ptr = current
             };
             cbor_parse_result_t key_v = cbor_parse(key_slice);
 
             if (key_v.is_error) {
                 printf("KEY RETURNED ERROR: %d\n", key_v.err);
-                return NULL;
+                return ERR(cbor_process_result_t, key_v.err);
             }
 
+            // Validate key next pointer
+            if (key_v.ok.next == NULL || key_v.ok.next < map.inside || 
+                key_v.ok.next > map.inside + map.max_size) {
+                printf("ERROR: Invalid next pointer for key\n");
+                return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+            }
+
+            // Calculate remaining bytes for value
+            remaining = map.max_size - (key_v.ok.next - map.inside);
+            if (remaining == 0) {
+                printf("ERROR: Map processing no bytes remain to parse the value\n");
+                return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+            }
+            
             // Parse value
             slice_t value_slice = {
-                .len = map.max_size - (current - map.inside),
+                .len = remaining,
                 .ptr = key_v.ok.next
             };
             cbor_parse_result_t value_v = cbor_parse(value_slice);
 
             if (value_v.is_error) {
                 printf("VALUE RETURNED ERROR: %d\n", value_v.err);
-                return NULL;
+                return ERR(cbor_process_result_t, value_v.err);
             }
 
             if (process_pair != NULL) {
@@ -368,44 +499,86 @@ uint8_t* cbor_process_map(cbor_map_t map, pair_processor_function process_pair, 
 
             if (value_v.ok.next == NULL) {
                 if (value_v.ok.type == CBOR_TYPE_MAP) {
-                    value_v.ok.next = cbor_process_map(value_v.ok.value.map, NULL, process_arg);
+                    cbor_process_result_t map_result = cbor_process_map(value_v.ok.value.map, NULL, process_arg);
+                    if (map_result.is_error) {
+                        return map_result;
+                    }
+                    value_v.ok.next = map_result.ok;
                 }
                 else if (value_v.ok.type == CBOR_TYPE_ARRAY) {
-                    value_v.ok.next = cbor_process_array(value_v.ok.value.array, NULL, process_arg);
+                    cbor_process_result_t array_result = cbor_process_array(value_v.ok.value.array, NULL, process_arg);
+                    if (array_result.is_error) {
+                        return array_result;
+                    }
+                    value_v.ok.next = array_result.ok;
                 }
             }
+            
+            // Validate value next pointer
+            if (value_v.ok.next == NULL || value_v.ok.next < map.inside || 
+                value_v.ok.next > map.inside + map.max_size) {
+                return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+            }
+            
             current = value_v.ok.next;
         }
+        // Validate break code position
+        if (current >= map.inside + map.max_size) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+        }
         // Skip over the break code
-        return current + 1;
+        return OK(cbor_process_result_t, current + 1);
     }
     
     // Handle definite length maps
-    if (map.length == 0) return map.inside;
+    if (map.length == 0) {
+        return OK(cbor_process_result_t, map.inside);
+    }
 
     for (size_t i = 0; i < map.length; i++) {
-        // printf("Current: %3d\n", current - buf);
-
+        // Check bounds
+        if (current >= map.inside + map.max_size) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+        }
+        
+        // Calculate remaining bytes for key
+        size_t remaining = map.max_size - (current - map.inside);
+        if (remaining == 0) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+        }
+        
         slice_t key_slice = {
-            .len = map.max_size - (current - map.inside),
+            .len = remaining,
             .ptr = current
         };
         cbor_parse_result_t key_v = cbor_parse(key_slice);
 
         if (key_v.is_error) {
             printf("KEY RETURNED ERROR: %d\n", key_v.err);
-            return NULL;
+            return ERR(cbor_process_result_t, key_v.err);
         }
 
+        // Validate key next pointer
+        if (key_v.ok.next == NULL || key_v.ok.next < map.inside || 
+            key_v.ok.next > map.inside + map.max_size) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+        }
+
+        // Calculate remaining bytes for value
+        remaining = map.max_size - (key_v.ok.next - map.inside);
+        if (remaining == 0) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+        }
+        
         slice_t value_slice = {
-            .len = map.max_size - (current - map.inside),
+            .len = remaining,
             .ptr = key_v.ok.next
         };
         cbor_parse_result_t value_v = cbor_parse(value_slice);
 
         if (value_v.is_error) {
             printf("VALUE RETURNED ERROR: %d\n", value_v.err);
-            return NULL;
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
         }
 
         if (process_pair != NULL) {
@@ -414,21 +587,44 @@ uint8_t* cbor_process_map(cbor_map_t map, pair_processor_function process_pair, 
 
         if (value_v.ok.next == NULL) {
             if (value_v.ok.type == CBOR_TYPE_MAP) {
-                value_v.ok.next = cbor_process_map(value_v.ok.value.map, NULL, process_arg);
+                cbor_process_result_t map_result = cbor_process_map(value_v.ok.value.map, NULL, process_arg);
+                if (map_result.is_error) {
+                    return map_result;
+                }
+                value_v.ok.next = map_result.ok;
             }
             else if (value_v.ok.type == CBOR_TYPE_ARRAY) {
-                value_v.ok.next = cbor_process_array(value_v.ok.value.array, NULL, process_arg);
+                cbor_process_result_t array_result = cbor_process_array(value_v.ok.value.array, NULL, process_arg);
+                if (array_result.is_error) {
+                    return array_result;
+                }
+                value_v.ok.next = array_result.ok;
             }
             else if (value_v.ok.type == CBOR_TYPE_BYTE_STRING && value_v.ok.argument.tag == ARGUMENT_NONE) {
-                value_v.ok.next = cbor_process_indefinite_string(value_v.ok.value.array, CBOR_TYPE_BYTE_STRING, NULL, process_arg);
+                cbor_process_result_t string_result = cbor_process_indefinite_string(value_v.ok.value.array, CBOR_TYPE_BYTE_STRING, NULL, process_arg);
+                if (string_result.is_error) {
+                    return string_result;
+                }
+                value_v.ok.next = string_result.ok;
             }
             else if (value_v.ok.type == CBOR_TYPE_TEXT_STRING && value_v.ok.argument.tag == ARGUMENT_NONE) {
-                value_v.ok.next = cbor_process_indefinite_string(value_v.ok.value.array, CBOR_TYPE_TEXT_STRING, NULL, process_arg);
+                cbor_process_result_t string_result = cbor_process_indefinite_string(value_v.ok.value.array, CBOR_TYPE_TEXT_STRING, NULL, process_arg);
+                if (string_result.is_error) {
+                    return string_result;
+                }
+                value_v.ok.next = string_result.ok;
             }
         }
+        
+        // Validate value next pointer
+        if (value_v.ok.next == NULL || value_v.ok.next < map.inside || 
+            value_v.ok.next > map.inside + map.max_size) {
+            return ERR(cbor_process_result_t, BUFFER_OVERFLOW_ERROR);
+        }
+        
         current = value_v.ok.next;
     }
-    return current;
+    return OK(cbor_process_result_t, current);
 }
 
 /********************************

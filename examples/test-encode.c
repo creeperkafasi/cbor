@@ -6,21 +6,11 @@
 #include <assert.h>
 #include "cbor.h"
 #include "debug.h"
+#include "test.h"
 
 // Test result tracking
 static int tests_passed = 0;
 static int tests_failed = 0;
-
-#define TEST_ASSERT(condition, message) \
-    do { \
-        if (condition) { \
-            printf("✅ PASS: %s\n", message); \
-            tests_passed++; \
-        } else { \
-            printf("❌ FAIL: %s\n", message); \
-            tests_failed++; \
-        } \
-    } while(0)
 
 // Helper function to compare byte arrays
 int compare_bytes(const uint8_t* actual, const uint8_t* expected, size_t len) {

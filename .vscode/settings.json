@@ -32,6 +32,8 @@
         "result.h": "c",
         "stdint.h": "c",
         "features.h": "c",
-        "cbor.h": "c"
+        "cbor.h": "c",
+        "cinttypes": "c",
+        "test.h": "c"
     }
 }

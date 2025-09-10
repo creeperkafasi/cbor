@@ -96,7 +96,7 @@ typedef struct {
     slice_t rid;
 } identification_request_t;
 
-void process_device_info(const cbor_value_t *key, const cbor_value_t *value, void *arg) {
+cbor_custom_processor_result_t process_device_info(const cbor_value_t *key, const cbor_value_t *value, void *arg) {
     device_info_t* device = arg;
 
     // Slice to cstring boilerplate, needed for strcmp
@@ -110,9 +110,10 @@ void process_device_info(const cbor_value_t *key, const cbor_value_t *value, voi
     if (!strcmp(keystr, "sn")) {
         device->sn = value->value.bytes;
     }
+    return CBOR_CUSTOM_PROCESSOR_OK();
 }
 
-void process_identification_request(const cbor_value_t *key, const cbor_value_t *value, void *arg) {
+cbor_custom_processor_result_t process_identification_request(const cbor_value_t *key, const cbor_value_t *value, void *arg) {
     identification_request_t* request = arg;
 
     char keystr[key->value.bytes.len + 1];
@@ -128,6 +129,7 @@ void process_identification_request(const cbor_value_t *key, const cbor_value_t 
     if (!strcmp(keystr, "rid")) {
         request->rid = value->value.bytes;
     }
+    return CBOR_CUSTOM_PROCESSOR_OK();
 }
 ```
 
@@ -141,7 +143,7 @@ This example leaves out some details. What if the key is not a string? What if t
 
 The library supports indefinite length arrays, maps, and strings. These are CBOR containers that don't specify their length upfront and are terminated by a "break" stop code (0xFF).
 
-When parsing, indefinite length arrays, maps, and strings are marked with `length = UINT32_MAX`. The processing functions (`cbor_process_array`, `cbor_process_map`, and `cbor_process_indefinite_string`) handle this automatically:
+When parsing, indefinite length arrays, maps, and strings are marked with `length = CBOR_LENGTH_INDEFINITE`. The processing functions (`cbor_process_array`, `cbor_process_map`, and `cbor_process_indefinite_string`) handle this automatically:
 
 ```c
 // Parse indefinite length array: [1, 2, 3]
@@ -463,7 +465,7 @@ In terms of performance, i thought about it. There will be a performance cost to
 
 </details>
 
-# Building
+# Building the examples
 
 Run `make` or `make TARGET=native` to build everything for linux.
 

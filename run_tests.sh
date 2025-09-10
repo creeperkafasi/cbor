@@ -24,12 +24,12 @@ print_header() {
 
 print_success() {
     echo -e "${GREEN}✅ $1${NC}"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
 }
 
 print_error() {
     echo -e "${RED}❌ $1${NC}"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
 }
 
 print_warning() {
@@ -115,6 +115,7 @@ run_native_tests() {
         "test-parse"
         "test-encode" 
         "test-indefinite"
+        "test-stress"
         "identify-parse"
         "identify-encode"
     )

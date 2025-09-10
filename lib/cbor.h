@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #if defined(__linux__) || defined(__unix__) || defined(__APPLE__) || defined(__FreeBSD__)
 #   include <endian.h>
@@ -18,6 +19,7 @@
 /*--------------------------------------------------------------------------*/
 
 typedef enum {
+    CBOR_MAJOR_TYPE_ERROR = -1,
     CBOR_MAJOR_TYPE_UNSIGNED_INTEGER = 0,
     CBOR_MAJOR_TYPE_NEGATIVE_INTEGER = 1,
     CBOR_MAJOR_TYPE_BYTE_STRING      = 2,
@@ -26,10 +28,11 @@ typedef enum {
     CBOR_MAJOR_TYPE_MAP              = 5,
     CBOR_MAJOR_TYPE_TAG              = 6,
     CBOR_MAJOR_TYPE_SIMPLE           = 7,
+
 } cbor_major_type_t;
 
 typedef enum {
-    CBOR_ERROR = -1,
+    CBOR_TYPE_ERROR = -1,
     CBOR_TYPE_INTEGER          = 0,
     CBOR_TYPE_BYTE_STRING      = 2,
     CBOR_TYPE_TEXT_STRING      = 3,
@@ -68,8 +71,11 @@ typedef enum {
     NULL_PTR_ERROR,
     EMPTY_BUFFER_ERROR,
     MALFORMED_INPUT_ERROR,
+    BUFFER_OVERFLOW_ERROR,
     PARSER_TODO
 } cbor_parser_error_t;
+
+#define CBOR_LENGTH_INDEFINITE UINT32_MAX
 
 /*--------------------------------------------------------------------------*/
 /* Core Data Structures */
@@ -241,8 +247,93 @@ typedef struct cbor_pair_s {
 /*--------------------------------------------------------------------------*/
 
 /* Parser Functions - Optimized as static inline for Contiki-NG compatibility */
+
+static inline int cbor_get_major_type_safe(const slice_t buf) {
+    if ( buf.len <= 0 || buf.ptr == NULL) {
+        return CBOR_MAJOR_TYPE_ERROR;
+    }
+    return (*buf.ptr) >> 5;
+}
+
 static inline cbor_major_type_t cbor_get_major_type(const uint8_t* data) {
     return (*data) >> 5;
+}
+
+static inline argument_t cbor_get_argument_safe(const slice_t buf, size_t offset) {
+    if (offset >= buf.len || buf.ptr == NULL) {
+        return (argument_t){.tag = ARGUMENT_MALFORMED};
+    }
+    
+    uint8_t argument = (buf.ptr[offset]) & 0x1F;
+
+    if (argument < 24) {
+        return (argument_t){
+            .tag = ARGUMENT_1BYTE,
+            ._1byte = argument,
+            .size = 0
+        };
+    }
+    
+    if (argument == 24) {
+        if (offset + 1 >= buf.len) {
+            return (argument_t){.tag = ARGUMENT_MALFORMED};
+        }
+        return (argument_t){
+            .tag = ARGUMENT_1BYTE,
+            ._1byte = buf.ptr[offset + 1],
+            .size = 1
+        };
+    }
+    
+    if (argument == 25) {
+        if (offset + 2 >= buf.len) {
+            return (argument_t){.tag = ARGUMENT_MALFORMED};
+        }
+        uint16_t temp;
+        memcpy(&temp, buf.ptr + offset + 1, sizeof(temp));
+        return (argument_t){
+            .tag = ARGUMENT_2BYTE,
+            ._2byte = be16toh(temp),
+            .size = 2
+        };
+    }
+    
+    if (argument == 26) {
+        if (offset + 4 >= buf.len) {
+            return (argument_t){.tag = ARGUMENT_MALFORMED};
+        }
+        uint32_t temp;
+        memcpy(&temp, buf.ptr + offset + 1, sizeof(temp));
+        return (argument_t){
+            .tag = ARGUMENT_4BYTE,
+            ._4byte = be32toh(temp),
+            .size = 4
+        };
+    }
+    
+    if (argument == 27) {
+        if (offset + 8 >= buf.len) {
+            return (argument_t){.tag = ARGUMENT_MALFORMED};
+        }
+        uint64_t temp;
+        memcpy(&temp, buf.ptr + offset + 1, sizeof(temp));
+        return (argument_t){
+            .tag = ARGUMENT_8BYTE,
+            ._8byte = be64toh(temp),
+            .size = 8
+        };
+    }
+    
+    if (argument == 31) {
+        return (argument_t){
+            .tag = ARGUMENT_NONE,
+            .size = 0
+        };
+    }
+    
+    return (argument_t){
+        .tag = ARGUMENT_MALFORMED
+    };
 }
 
 static inline argument_t cbor_get_argument(const uint8_t* data) {
@@ -265,7 +356,8 @@ static inline argument_t cbor_get_argument(const uint8_t* data) {
     }
     
     if (argument == 25) {
-        uint16_t temp = *(uint16_t*)(data + 1);
+        uint16_t temp;
+        memcpy(&temp, data + 1, sizeof(temp));
         return (argument_t){
             .tag = ARGUMENT_2BYTE,
             ._2byte = be16toh(temp),
@@ -274,7 +366,8 @@ static inline argument_t cbor_get_argument(const uint8_t* data) {
     }
     
     if (argument == 26) {
-        uint32_t temp = *(uint32_t*)(data + 1);
+        uint32_t temp;
+        memcpy(&temp, data + 1, sizeof(temp));
         return (argument_t){
             .tag = ARGUMENT_4BYTE,
             ._4byte = be32toh(temp),
@@ -283,7 +376,8 @@ static inline argument_t cbor_get_argument(const uint8_t* data) {
     }
     
     if (argument == 27) {
-        uint64_t temp = *(uint64_t*)(data + 1);
+        uint64_t temp;
+        memcpy(&temp, data + 1, sizeof(temp));
         return (argument_t){
             .tag = ARGUMENT_8BYTE,
             ._8byte = be64toh(temp),
@@ -303,6 +397,11 @@ static inline argument_t cbor_get_argument(const uint8_t* data) {
     };
 }
 
+/* Helper function to validate pointer bounds */
+static inline int cbor_validate_bounds(const slice_t buf, size_t offset, size_t required_bytes) {
+    return buf.ptr != NULL && (offset + required_bytes <= buf.len);
+}
+
 static inline uint64_t cbor_argument_to_fixed(argument_t arg) {
     switch (arg.tag) {
         case ARGUMENT_1BYTE: return arg._1byte;
@@ -319,13 +418,33 @@ FN_RESULT (
     cbor_parse, slice_t buf
 );
 
-/* Processing Functions */
-typedef void (*pair_processor_function)(const cbor_value_t* key, const cbor_value_t* value, void* process_arg);
-typedef void (*single_processor_function)(const cbor_value_t* value, void* process_arg);
+typedef union {
+    uint8_t is_error;
+    uint8_t ok;
+    enum {
+        CBOR_CUSTOM_PROCESSOR_SUCESS = 0,
+        CBOR_CUSTOM_PROCESSOR_ERROR_PARSER,
+    } err;
+} cbor_custom_processor_result_t;
 
-uint8_t* cbor_process_array(cbor_array_t array, single_processor_function process_single, void* process_arg);
-uint8_t* cbor_process_map(cbor_map_t map, pair_processor_function process_pair, void* process_arg);
-uint8_t* cbor_process_indefinite_string(cbor_array_t string_chunks, cbor_type_t expected_type, single_processor_function process_single, void* process_arg);
+#define CBOR_CUSTOM_PROCESSOR_OK() \
+(cbor_custom_processor_result_t) {.is_error=0}
+
+#define CUSTOM_PROCESSOR_ERR(errcode) \
+(cbor_custom_processor_result_t) {.err = errcode}
+
+/* Processing Functions */
+typedef cbor_custom_processor_result_t (*pair_processor_function)(const cbor_value_t* key, const cbor_value_t* value, void* process_arg);
+typedef cbor_custom_processor_result_t (*single_processor_function)(const cbor_value_t* value, void* process_arg);
+
+/* Result types for processing functions */
+typedef uint8_t* uint8_ptr_t;
+DEFINE_RESULT_TYPE(uint8_ptr_t, cbor_parser_error_t);
+typedef result_uint8_ptr_t_cbor_parser_error_t_t cbor_process_result_t;
+
+cbor_process_result_t cbor_process_array(cbor_array_t array, single_processor_function process_single, void* process_arg);
+cbor_process_result_t cbor_process_map(cbor_map_t map, pair_processor_function process_pair, void* process_arg);
+cbor_process_result_t cbor_process_indefinite_string(cbor_array_t string_chunks, cbor_type_t expected_type, single_processor_function process_single, void* process_arg);
 
 /* Encoding Functions */
 FN_RESULT(slice_t, cbor_encode_error_t,
