@@ -107,7 +107,6 @@ void print_cbor_value(cbor_value_t value, int indent)
         }
         break;
     case CBOR_TYPE_FLOAT:
-        
         printf("Float: %f\n", (double)value.value.floating);
         break;
     default:
