@@ -17,7 +17,8 @@ endif
 
 # Source files
 SRC_DIR = .
-LIB_DIR = lib
+LIB_DIR = src
+INC_DIR = include
 EXAMPLES_DIR = examples
 
 # Library files
@@ -38,7 +39,7 @@ EXAMPLE_OBJS = $(patsubst %.c,$(BUILD_DIR)/%.o,$(EXAMPLE_SRCS))
 EXAMPLE_OUTS = $(addprefix $(BUILD_DIR)/,$(if $(filter embedded,$(TARGET)),$(addsuffix .elf,$(EXAMPLES)),$(EXAMPLES)))
 
 # Include directories
-INCLUDES = -I$(LIB_DIR)
+INCLUDES = -I$(INC_DIR)
 
 # Common compiler flags
 CFLAGS += -Os

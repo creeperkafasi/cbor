@@ -1,7 +1,7 @@
 #ifndef CBOR_TEST_H
 #define CBOR_TEST_H
 
-#include "cbor.h"
+#include "cbor/cbor.h"
 
 #define TEST_ASSERT(condition, message) \
     do { \

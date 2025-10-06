@@ -1,14 +1,14 @@
-#include "cbor.h"
+#include "cbor/cbor.h"
 #include <stdio.h>
 #include <stdint.h>
 #if defined(__linux__) || defined(__unix__) || defined(__APPLE__) || defined(__FreeBSD__)
 #include <endian.h>
 #else 
-#include "compat/endian.h"
+#include "cbor/compat/endian.h"
 #endif
 #include <string.h>
 
-#include "compat/float.h"
+#include "cbor/compat/float.h"
 
 #define CBOR_FLOAT_PRECISION_DEFAULT CBOR_FLOAT_PRECISION_SINGLE
 

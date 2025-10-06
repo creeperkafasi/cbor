@@ -2,7 +2,7 @@
 #define EXAMPLE_IDENTIFY_H
 
 #include <stdint.h>
-#include "cbor.h"
+#include "cbor/cbor.h"
 
 // X macro for iterating over the identify parameters
 #define IDENTIFY_PARAMETERS           \

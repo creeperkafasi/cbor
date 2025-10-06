@@ -2,8 +2,8 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-#include "cbor.h"
-#include "debug.h"
+#include "cbor/cbor.h"
+#include "cbor/debug.h"
 
 #ifndef TARGET_EMBEDDED
 #include <stdio.h>

@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include "cbor.h"
-#include "debug.h"
+#include "cbor/cbor.h"
+#include "cbor/debug.h"
 #include "test.h"
 
 // Test result tracking

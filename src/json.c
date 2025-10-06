@@ -1,5 +1,5 @@
-#include "json.h"
-#include "debug.h"
+#include "cbor/json.h"
+#include "cbor/debug.h"
 
 static inline void indent_space(FILE* target, int count) {
     for(int i = 0; i < count; i++) {

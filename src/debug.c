@@ -6,7 +6,7 @@
 #endif
 #include <inttypes.h>
 
-#include "debug.h"
+#include "cbor/debug.h"
 
 /*--------------------------------------------------------------------------*/
 cbor_custom_processor_result_t print_single(const cbor_value_t* value, void* arg) {
