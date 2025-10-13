@@ -11,29 +11,29 @@ static inline void indent_space(FILE* target, int count) {
 cbor_custom_processor_result_t print_single_json(const cbor_value_t* value, void* arg) {
     if (!arg) return ERR(cbor_custom_processor_result_t, 0);
 
-    json_print_state_t* state = arg;
+    cbor_json_print_state_t* state = arg;
     
     indent_space(state->target, state->indent);
     if (value->type == CBOR_TYPE_MAP) {
-        json_print_state_t new_state;
+        cbor_json_print_state_t new_state;
         memcpy(&new_state, state, sizeof(new_state));
-        new_state.indent += state->indent_step;
+        new_state.indent += state->options.indent_step;
         int counter = value->value.map.length;
         new_state.counter = &counter;
         fprintf(state->target, "{");
-        if (state->newline) fprintf(state->target, "\n");
+        if (state->options.newline) fprintf(state->target, "\n");
         cbor_process_map(value->value.map, print_pair_json, &new_state);
         indent_space(state->target, state->indent);
         fprintf(state->target, "}");
     }        
     else if (value->type == CBOR_TYPE_ARRAY) {
-        json_print_state_t new_state;
+        cbor_json_print_state_t new_state;
         memcpy(&new_state, state, sizeof(new_state));
-        new_state.indent += state->indent_step;
+        new_state.indent += state->options.indent_step;
         int counter = value->value.array.length;
         new_state.counter = &counter;
         fprintf(state->target, "[");
-        if (state->newline) fprintf(state->target, "\n");
+        if (state->options.newline) fprintf(state->target, "\n");
         cbor_process_array(value->value.array, print_single_json, &new_state);
         indent_space(state->target, state->indent);
         fprintf(state->target, "]");
@@ -43,7 +43,7 @@ cbor_custom_processor_result_t print_single_json(const cbor_value_t* value, void
     }
     (*state->counter)--;
     if (*state->counter > 0) fprintf(state->target, ",");
-    if (state->newline) fprintf(state->target, "\n");
+    if (state->options.newline) fprintf(state->target, "\n");
     fflush(state->target);
     return CBOR_CUSTOM_PROCESSOR_OK();
 }
@@ -51,31 +51,31 @@ cbor_custom_processor_result_t print_single_json(const cbor_value_t* value, void
 cbor_custom_processor_result_t print_pair_json(const cbor_value_t* key, const cbor_value_t* value, void* arg) {
     if (!arg) return ERR(cbor_custom_processor_result_t, 0);
     
-    json_print_state_t* state = arg;
+    cbor_json_print_state_t* state = arg;
     
     indent_space(state->target, state->indent);
     print_cbor_value_json(*key, state->indent, state->target);
     fprintf(state->target, " : ");
     if (value->type == CBOR_TYPE_MAP) {
-        json_print_state_t new_state;
-        memcpy(&new_state, state, sizeof(json_print_state_t));
-        new_state.indent += state->indent_step;
+        cbor_json_print_state_t new_state;
+        memcpy(&new_state, state, sizeof(cbor_json_print_state_t));
+        new_state.indent += state->options.indent_step;
         int counter = value->value.map.length;
         new_state.counter = &counter;
         fprintf(state->target, "{");
-        if (state->newline) fprintf(state->target, "\n");
+        if (state->options.newline) fprintf(state->target, "\n");
         cbor_process_map(value->value.map, print_pair_json, &new_state);
         indent_space(state->target, state->indent);
         fprintf(state->target, "}");
     }
     else if (value->type == CBOR_TYPE_ARRAY) {
-        json_print_state_t new_state;
+        cbor_json_print_state_t new_state;
         memcpy(&new_state, state, sizeof(new_state));
-        new_state.indent += state->indent_step;
+        new_state.indent += state->options.indent_step;
         int counter = value->value.array.length;
         new_state.counter = &counter;
         fprintf(state->target, "[");
-        if (state->newline) fprintf(state->target, "\n");
+        if (state->options.newline) fprintf(state->target, "\n");
         cbor_process_array(value->value.array, print_single_json, &new_state);
         indent_space(state->target, state->indent);
         fprintf(state->target, "]");
@@ -85,7 +85,7 @@ cbor_custom_processor_result_t print_pair_json(const cbor_value_t* key, const cb
     }
     (*state->counter)--;
     if (*state->counter > 0) fprintf(state->target, ",");
-    if (state->newline) fprintf(state->target, "\n");
+    if (state->options.newline) fprintf(state->target, "\n");
     fflush(state->target);
     return CBOR_CUSTOM_PROCESSOR_OK();
 }
